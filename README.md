@@ -53,6 +53,15 @@ python touch-licorice-apps/xtpack.py /path/to/staged-ybx -o package/YBX-1.6.16.x
 `lockscreen.lua` для стоковой блокировки и добавляет блок `lockscreen` в
 манифест.
 
+## Обновления
+
+`python scripts/publish_xtapp.py --notes "Что изменилось"` собирает пакет,
+кладёт его и `latest.json` в `YBX Site/.../static/xtapp/`, проверяет
+`tools/validate_source.py` и создаёт GitHub-релиз `v<version>`. На устройства
+обновление приходит только с сервера YBX; GitHub-релиз — архив и публичный
+артефакт. `--site PATH` выбирает рабочую копию сайта, `--no-release` пропускает
+GitHub, `--dry-run` только печатает манифест.
+
 ## Тесты и проверка
 
 Тесты исполняют Lua-приложение в wasmoon (Lua 5.4) на моках хоста — нативный Lua

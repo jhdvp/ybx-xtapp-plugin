@@ -291,6 +291,23 @@ local STR={
  retry_reports={'Resend reports','Отправить отчёты повторно','Есептерді қайта жіберу'},
  conn_help={'Connection problems','Проблемы с подключением','Қосылу мәселелері'},
  about_title={'About','О приложении','Қолданба туралы'},
+ update_check={'Check for updates','Проверить обновление','Жаңартуды тексеру'},
+ update_checking={'Checking for updates…','Проверяем обновления…','Жаңартулар тексерілуде…'},
+ update_none={'You have the latest version','У вас последняя версия','Сізде соңғы нұсқа'},
+ update_none_body={'YBX XTApp is up to date.','YBX XTApp обновлён.','YBX XTApp жаңартылған.'},
+ update_check_failed={'Could not check for updates','Не удалось проверить обновление','Жаңартуды тексеру мүмкін болмады'},
+ update_available={'YBX %s is available','Доступна YBX %s','YBX %s қолжетімді'},
+ update_available_body={'Version %s, %d KB. Update?','Версия %s, %d КБ. Обновить?','Нұсқа %s, %d КБ. Жаңарту керек пе?'},
+ update_now={'Update','Обновить','Жаңарту'},
+ update_later={'Later','Позже','Кейінірек'},
+ update_downloading={'Downloading update… %d%%','Скачиваем обновление… %d%%','Жаңарту жүктелуде… %d%%'},
+ update_download_failed={'Could not download the update. Try again.','Не удалось скачать обновление, попробуйте ещё раз.','Жаңартуды жүктеу мүмкін болмады, қайталап көріңіз.'},
+ update_title={'Update','Обновление','Жаңарту'},
+ update_ready_title={'Update ready','Обновление готово','Жаңарту дайын'},
+ update_saved={'Package saved: %s','Пакет сохранён: %s','Пакет сақталды: %s'},
+ update_saved_hint={'Open All Files and install it — books and settings stay.','Откройте All Files и установите его — книги и настройки сохранятся.','All Files ашып орнатыңыз — кітаптар мен параметрлер сақталады.'},
+ update_install={'Install saved update','Установить обновление','Сақталған жаңартуды орнату'},
+ update_close={'Close update','Закрыть','Жабу'},
  last_error={'Last download error','Последняя ошибка скачивания','Соңғы жүктеу қатесі'},
  storage_check={'Storage check','Проверка памяти','Жадты тексеру'},
  storage_test={'Test download storage','Проверка памяти для книг','Кітаптар жадын тексеру'},
@@ -397,6 +414,118 @@ local function T(key,...)
 end
 -- Helpers grouped in one table: the main chunk is close to Lua's 200-local limit.
 local F={}
+-- Book file names: "<Author> - <Title>.epub". The firmware's storage rules are
+-- not fully known (an early probe said no spaces; Cyrillic is untested), so
+-- every candidate is tried with an empty write first and the first name the
+-- reader accepts is used:
+--   1) "Ремарк Эрих Мария - Три товарища.epub"
+--   2) "Ремарк_Эрих_Мария_-_Три_товарища.epub"      (spaces refused)
+--   3) "Remark_Erikh_Mariya_-_Tri_tovarishcha.epub" (non-ASCII refused)
+--   4) the legacy numbered name
+-- A name already taken by another book gets " (2)", " (3)" ... appended.
+local NAMES = {}
+do
+  local TR = {
+    ['а']='a',['б']='b',['в']='v',['г']='g',['д']='d',['е']='e',['ё']='yo',['ж']='zh',['з']='z',['и']='i',['й']='y',
+    ['к']='k',['л']='l',['м']='m',['н']='n',['о']='o',['п']='p',['р']='r',['с']='s',['т']='t',['у']='u',['ф']='f',
+    ['х']='kh',['ц']='ts',['ч']='ch',['ш']='sh',['щ']='shch',['ъ']='',['ы']='y',['ь']='',['э']='e',['ю']='yu',['я']='ya',
+    ['ә']='a',['і']='i',['ң']='ng',['ғ']='gh',['ү']='u',['ұ']='u',['қ']='q',['ө']='o',['һ']='h',
+  }
+  local UP = {}
+  do
+    local up, lo = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯӘІҢҒҮҰҚӨҺ', 'абвгдеёжзийклмнопрстуфхцчшщъыьэюяәіңғүұқөһ'
+    local los = {}
+    for _, cp in utf8.codes(lo) do los[#los + 1] = utf8.char(cp) end
+    local i = 0
+    for _, cp in utf8.codes(up) do i = i + 1; UP[utf8.char(cp)] = los[i] end
+  end
+  local function cut(s, chars)
+    if not utf8.len(s) then return '' end
+    local stop = utf8.offset(s, chars + 1)
+    return stop and s:sub(1, stop - 1) or s
+  end
+  -- Drop characters FAT and the firmware cannot take; collapse spaces.
+  function NAMES.clean(s, chars)
+    s = tostring(s or '')
+    if not utf8.len(s) then return '' end
+    local out = {}
+    for _, cp in utf8.codes(s) do
+      local ch = utf8.char(cp)
+      if cp < 32 or cp == 127 or ch:find('^[\\/:%*%?"<>|]$') then ch = ' ' end
+      out[#out + 1] = ch
+    end
+    s = table.concat(out):gsub('%s+', ' '):gsub('^[%s%.]+', ''):gsub('[%s%.]+$', '')
+    s = cut(s, chars):gsub('[%s%.]+$', '')
+    return s
+  end
+  function NAMES.translit(s)
+    local out = {}
+    for _, cp in utf8.codes(s) do
+      local ch = utf8.char(cp)
+      if cp < 128 then out[#out + 1] = ch
+      else
+        local lower = UP[ch]
+        local t = TR[lower or ch]
+        if t and lower and t ~= '' then t = t:sub(1, 1):upper() .. t:sub(2) end
+        out[#out + 1] = t or ''
+      end
+    end
+    return table.concat(out)
+  end
+  -- Name candidates for a book, most readable first.
+  function NAMES.candidates(author, title, legacy)
+    author, title = NAMES.clean(author, 60), NAMES.clean(title, 100)
+    if title == '' then title = 'book' end
+    -- keep the name under 170 bytes (Cyrillic is 2 bytes a letter) by
+    -- shortening the title, then the author
+    local function join() return author ~= '' and (author .. ' - ' .. title) or title end
+    while #join() > 170 and utf8.len(title) > 20 do title = cut(title, utf8.len(title) - 4):gsub('[%s%.]+$', '') end
+    while #join() > 170 and utf8.len(author) > 10 do author = cut(author, utf8.len(author) - 4):gsub('[%s%.]+$', '') end
+    local base = join()
+    local under = base:gsub(' ', '_')
+    local latin = NAMES.translit(under):gsub('[^%w%-_%.%(%)]', ''):gsub('_+', '_'):gsub('^_', '')
+    local list, seen = {}, {}
+    for _, b in ipairs { base, under, latin ~= '' and latin or nil } do
+      if b and not seen[b] and #b <= 180 then seen[b] = true; list[#list + 1] = b end
+    end
+    if legacy then list[#list + 1] = legacy:gsub('%.epub$', '') end
+    return list
+  end
+  -- A name is usable when it is free and an empty write to it succeeds (and,
+  -- when given, a sidecar name succeeds in a second tree).
+  local function free(service, name)
+    local ok, size = pcall(function() return service:size(name) end)
+    return ok and not size
+  end
+  local function writable(service, name)
+    if not free(service, name) then return false end
+    local ok, done = pcall(function() return service:write(name, '') end)
+    local good = ok and done ~= false and done ~= nil
+    if good then
+      local okz, size = pcall(function() return service:size(name) end)
+      good = okz and size == 0
+    end
+    pcall(function() service:remove(name) end)
+    return good
+  end
+  function NAMES.pick(service, author, title, legacy, sidecar_service, sidecar_suffix)
+    for i, base in ipairs(NAMES.candidates(author, title, legacy)) do
+      local is_legacy = legacy and i == #NAMES.candidates(author, title, legacy)
+      for n = 1, is_legacy and 1 or 9 do
+        local suffix = n == 1 and '' or (base:find(' ', 1, true) and (' (' .. n .. ')') or ('_(' .. n .. ')'))
+        local name = base .. suffix .. '.epub'
+        if writable(service, name) and (not sidecar_service or writable(sidecar_service, name .. sidecar_suffix)) then return name end
+        if not free(service, name) then -- taken: try the next number
+        else break end                    -- refused: try the next style
+      end
+    end
+  end
+  -- Names stored in app state are trusted only if they look like file names.
+  function NAMES.valid(name)
+    return type(name) == 'string' and #name <= 200 and name:sub(-5) == '.epub' and utf8.len(name) ~= nil
+      and not name:find('[/\\]') and not name:find('^%.')
+  end
+end
 function F.month_name(ym)
   local y,m=tostring(ym or ''):match('^(%d%d%d%d)%-(%d%d)$');m=tonumber(m)
   if not m or m<1 or m>12 then return tostring(ym or '') end
@@ -469,6 +598,7 @@ local reader_supported
 local clear_partial
 local function header(resp,name)
   for k,v in pairs(resp.headers or {}) do if tostring(k):lower()==name then return v end end
+  return nil -- explicit: tonumber() of no value raises an error
 end
 local retry_at, request_id, active = 0, 0, nil
 local request_started = 0
@@ -750,7 +880,7 @@ local function reader_book_map()
     local count=0
     for file,id in pairs(value.books) do
       if count>=17 then break end
-      if type(file)=='string' and #file<=58 and file:match('^ybx%-%d+%.epub$') and type(id)=='string' and #id<=256 then
+      if NAMES.valid(file) and type(id)=='string' and #id<=256 then
         result[file]=id;count=count+1
       end
     end
@@ -894,6 +1024,7 @@ local function show_page(list)
   items=list;ui.loaded=true
   if query=='' then ui.library_cache={items=items,page=page,shelf=shelf} end
   view='catalog';selected_index=1;redraw('')
+  F.update_auto()
 end
 -- Refresh one shelf page in the background; redraw only if it changed and is
 -- still the page on screen.
@@ -1026,6 +1157,9 @@ local function download()
     filename=nil
   end
   if not filename then say('err_no_slot');return end
+  -- "<Author> - <Title>.epub", or the first variant the reader accepts; on
+  -- CrossPoint the reading tracker's "<name>.track" must fit ctx.storage too
+  filename=NAMES.pick(book_store,selected.author,selected.title,filename,reader_supported() and c.storage or nil,'.track') or filename
   c.state.next_file=counter; c.state.pending=filename;c:save_state()
   download_file=filename
   download_native=native_save
@@ -1490,7 +1624,7 @@ local function back()
   end
   if view=='kosync' then ui.credentials=nil;ui.reveal=false end
   if view=='clippings' then ui.clip_key=nil;ui.clip_url=nil;ui.reveal=false end
-  local parent={offline='support',settings='catalog',account='settings',disconnect='account',forget='account',sleep='settings',sleep_options='sleep',reader_sleep='settings',kosync='settings',support='settings',storage='support',about='support',activity='catalog',reading_list='activity',book_stats='reading_list',clippings='kosync',calendar='activity',day='calendar',awards='activity',award='awards',search='catalog',filters='catalog',provider='filters',pair='welcome',pair_expired='welcome',expired='welcome',delete='detail',book_actions='detail',download_ready='detail',download_error='detail',error_details='download_error'}
+  local parent={offline='support',settings='catalog',account='settings',disconnect='account',forget='account',sleep='settings',sleep_options='sleep',reader_sleep='settings',kosync='settings',support='settings',storage='support',about='support',activity='catalog',reading_list='activity',book_stats='reading_list',clippings='kosync',calendar='activity',day='calendar',awards='activity',award='awards',search='catalog',filters='catalog',provider='filters',pair='welcome',pair_expired='welcome',expired='welcome',delete='detail',book_actions='detail',download_ready='detail',download_error='detail',error_details='download_error',update='about',update_ready='about'}
   if view=='detail' or view=='download_ready' then go(return_view);return end
   if parent[view]=='catalog' then library() elseif parent[view]=='sleep' then enter_sleep() else go(parent[view] or 'catalog') end
 end
@@ -1500,6 +1634,88 @@ function F.open_stores(from)
   local ok,qr=pcall(function() return c.qr:encode(STORES_URL) end)
   ui.stores_qr=ok and qr or nil
   message='';go('stores')
+end
+-- Update channel: the site serves /xtapp/latest.json and the package; the host
+-- has no install API and cannot open .xtapp, so the app only prepares the file.
+function F.update_newer(current,candidate)
+  local cm,cn,cp,bm,bn,bp
+  if type(candidate)=='string' then cm,cn,cp=candidate:match('^(%d+)%.(%d+)%.(%d+)$') end
+  if type(current)=='string' then bm,bn,bp=current:match('^(%d+)%.(%d+)%.(%d+)$') end
+  if not cm or not bm then return false end
+  cm,cn,cp,bm,bn,bp=tonumber(cm),tonumber(cn),tonumber(cp),tonumber(bm),tonumber(bn),tonumber(bp)
+  if cm~=bm then return cm>bm end
+  if cn~=bn then return cn>bn end
+  return cp>bp
+end
+function F.update_manifest(doc)
+  if type(doc)~='table' or doc.app~='ybx-xtapp' then return nil end
+  local v=doc.version
+  if type(v)~='string' or not v:match('^%d+%.%d+%.%d+$') or not F.update_newer(VERSION,v) then return nil end
+  if doc.url~='/xtapp/YBX-'..v..'.xtapp' then return nil end
+  local size=tonumber(doc.size)
+  if not size or size%1~=0 or size<1 or size>2097152 then return nil end
+  if type(doc.sha256)~='string' or not doc.sha256:match('^[0-9a-f]+$') or #doc.sha256~=64 then return nil end
+  return {version=v,url=doc.url,size=size,notes=type(doc.notes)=='string' and doc.notes or ''}
+end
+-- Raw host request outside /api/v1 (the update catalog lives at /xtapp/).
+function F.update_fetch(path,on_data,done)
+  local base=api_host()
+  local function send(host,tried)
+    local url=host..path
+    local ok,handle=pcall(function()
+      return c.net:request({url=url,method='GET',timeout_ms=20000,
+        on_data=on_data and function(_,chunk) on_data(_,chunk) end},function(_,resp)
+        local status=type(resp)=='table' and tonumber(resp.status) or 0
+        if status<=0 and not tried and server_mode()=='auto' then
+          send(host==HOSTS.main and HOSTS.eu or HOSTS.main,true);return
+        end
+        if status>0 then note_host(host_of(url)) end
+        done(resp,status)
+      end)
+    end)
+    if not ok then done(nil,0) end
+  end
+  send(base,false)
+end
+function F.update_snooze(m)
+  c.state.update_skip_version=m.version
+  c.state.update_skip_until=epoch()+86400
+  c:save_state()
+end
+function F.update_prompt(m)
+  c.state.update_available=m;c:save_state()
+  if type(c.dialog)=='table' and c.dialog.confirm then
+    c.dialog:confirm({title=T('update_available',m.version),text=T('update_available_body',m.version,math.floor((m.size+512)//1024))},function(_,yes)
+      if yes then go('update') else F.update_snooze(m) end
+    end)
+    return
+  end
+  go('update')
+end
+function F.update_check(manual)
+  if ui.update_check_at and now()-ui.update_check_at<30000 then return end
+  ui.update_check_at=now()
+  if manual then say('update_checking') end
+  F.update_fetch('/xtapp/latest.json?v='..VERSION,nil,function(resp,status)
+    ui.update_check_at=nil
+    if status~=200 then if manual then say('update_check_failed') end;return end
+    local ok,doc=pcall(function() return c.json:decode(type(resp)=='table' and resp.body or '') end)
+    local m=ok and F.update_manifest(doc) or nil
+    local stamp=epoch()
+    if stamp>0 then c.state.update_checked_at=stamp end
+    if not m then c.state.update_available=nil;c:save_state();if manual then say('update_none') end;return end
+    if not manual and c.state.update_skip_version==m.version and stamp>0
+        and stamp<(tonumber(c.state.update_skip_until) or 0) then return end
+    F.update_prompt(m)
+  end)
+end
+function F.update_auto()
+  if token=='' or download_file then return end
+  local stamp=epoch()
+  if stamp<=0 then return end
+  local checked=tonumber(c.state.update_checked_at) or 0
+  if checked>0 and stamp-checked<86400 then return end
+  F.update_check(false)
 end
 local function header_ui(g,title,back_action,settings,refresh)
   local right=refresh and 344 or settings and 400 or 456
@@ -1607,6 +1823,11 @@ kb_open=function(title,text,callback,return_view)
   kb.return_view=return_view or 'search'
   view='keyboard';ui.focus=false;buttons={};redraw('')
 end
+-- Holding Delete keeps deleting: one letter on touch, then after 450 ms about
+-- eight a second until the finger lifts or leaves the key. The tick goes back to
+-- the download rate or the idle rate afterwards.
+function F.kb_hold_stop() if kb.hold then kb.hold=nil;tick_rate(download_file~=nil) end end
+function F.kb_hold_start(b) kb.hold={x=b.x,y=b.y,w=b.w,h=b.h,at=now()+450,stop=now()+20000};tick_rate(true) end
 local function kb_close()
   kb.active=false;kb.callback=nil
   go(kb.return_view=='search' and 'search' or kb.return_view,'')
@@ -1846,7 +2067,7 @@ function on_load(ctx)
   local books={}
   for i,book in ipairs(type(c.state.downloads)=='table' and c.state.downloads or {}) do
     if i>32 then break end
-    if type(book)=='table' and type(book.id)=='string' and #book.id<=256 and type(book.file)=='string' and book.file:match('^ybx%-%d+%.epub$') and #book.file<=64 then
+    if type(book)=='table' and type(book.id)=='string' and #book.id<=256 and NAMES.valid(book.file) then
       books[#books+1]={id=book.id,file=book.file,title=short_utf8(book.title,64),author=short_utf8(book.author,64)}
     end
   end
@@ -1874,7 +2095,7 @@ function on_load(ctx)
   if repaired and token~='' then persist_events() end
   local next_file=math.tointeger(c.state.next_file or 1)
   c.state.next_file=next_file and next_file>=1 and next_file<1000000000 and next_file or 1
-  if type(c.state.pending)=='string' then download_file=c.state.pending;clear_partial() end
+  if NAMES.valid(c.state.pending) then local done=false;for _,b in ipairs(c.state.downloads) do if b.file==c.state.pending then done=true end end;if not done then download_file=c.state.pending;clear_partial() else c.state.pending=nil end else c.state.pending=nil end
   if reader_supported() then
     if not c.state.reader_files then
       local ok,ready=pcall(function()
@@ -2205,8 +2426,19 @@ function on_draw(_,g)
   elseif view=='offline' then
     header_ui(g,T('conn_help'),back);empty(g,T('offline_title'),T('offline_body'),'wifi')
     action(g,624,T('open_downloads'),downloads,'book');action(g,700,T('offline_retry'),function() catalog(true) end,'refresh',true)
+  elseif view=='update' then
+    header_ui(g,T('update_title'),back)
+    local m=c.state.update_available
+    if type(m)~='table' then empty(g,T('update_none'),T('update_none_body'),'refresh')
+    else
+      paragraph(g,24,120,T('update_available_body',m.version,math.floor((m.size+512)//1024)),432,4)
+      action(g,700,T('update_later'),function() F.update_snooze(m);go('about') end,'close',true)
+    end
   elseif view=='about' then
-    header_ui(g,T('about_title'),back);empty(g,T('welcome_title'),T('about_body'),'library');text(g,24,650,'YBX XTApp '..APP_VERSION)
+    header_ui(g,T('about_title'),back);empty(g,T('welcome_title'),T('about_body'),'library')
+    row(g,512,T('update_check'),function() F.update_check(true) end,'refresh')
+    if type(c.state.update_ready)=='table' then row(g,576,T('update_install'),function() go('update_ready') end,'download') end
+    text(g,24,660,'YBX XTApp '..APP_VERSION)
   elseif view=='stores' then
     header_ui(g,T('stores_title'),back)
     paragraph(g,24,96,T('stores_body'),432,3)
@@ -2222,6 +2454,16 @@ function on_draw(_,g)
 end
 function on_input(_,event)
   ui.last_input=now()
+  if view=='keyboard' and event.type=='pointer' then
+    local function inside(b) return event.x and event.x>=b.x and event.x<b.x+b.w and event.y>=b.y and event.y<b.y+b.h end
+    if event.phase=='down' then
+      for _,b in ipairs(buttons) do if b.label=='Del' and inside(b) then kb_backspace();F.kb_hold_start(b);return end end
+      return
+    elseif event.phase=='move' or event.phase=='hold' then
+      if kb.hold and event.x and not inside(kb.hold) then F.kb_hold_stop() end
+      return
+    elseif event.phase=='up' and kb.hold then F.kb_hold_stop();return end
+  end
   if event.type=='pointer' and event.phase=='up' and event.gesture=='tap' then
     ui.focus=false
     for _,b in ipairs(buttons) do if event.x>=b.x and event.x<b.x+b.w and event.y>=b.y and event.y<b.y+b.h then ui.auto_library=false;b.action();return end end
@@ -2238,6 +2480,11 @@ function on_input(_,event)
 end
 
 function on_tick()
+  if kb.hold then
+    local h=kb.hold
+    if view~='keyboard' or now()>h.stop or kb.text=='' then F.kb_hold_stop()
+    elseif now()>=h.at then kb_backspace();h.at=now()+120 end
+  end
   if busy and download_file and download_native then
     local ok,size=pcall(function() return book_store:size(download_file) end)
     if ok and type(size)=='number' then
@@ -2263,6 +2510,7 @@ function on_tick()
   prefetch()
 end
 function on_leave()
+  kb.hold=nil
   quiet_cancel()
   ui.sleep_runs=nil
   if ui.sleep_picture then pcall(function() ui.sleep_picture:release() end);ui.sleep_picture=nil end

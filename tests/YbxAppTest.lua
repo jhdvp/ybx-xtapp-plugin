@@ -2,6 +2,9 @@ local files,objects,serial,pending,clock={},{},0,nil,0
 local fail_append,throw_append=false,false
 local wifi_keep
 local append_max=0
+local dialogs={}
+local epoch_now=0
+local function set_epoch(v) epoch_now=v end
 local function encode(_,v) serial=serial+1;local key='json:'..serial;objects[key]=v;return key end
 local function decode(_,s) return objects[s] end
 local rendered,rectangles={},{}
@@ -10,7 +13,7 @@ local storage={read=function(_,n,offset,length)local data=files[n];return data a
  write=function(_,n,s)files[n]=s;return true end,remove=function(_,n)files[n]=nil;return true end,
  list=function(_)local out={}for name,data in pairs(files)do out[#out+1]={name=name,size=#data}end;return out end,
  append=function(_,n,s)append_max=math.max(append_max,#s);assert(#s<=262144,'stock append cap');if throw_append then error('append is unavailable')end;if fail_append then return nil,'quota_exceeded'end;files[n]=(files[n] or '')..s;return true end}
-local ctx={crosspoint_reader_events=false,state={lang='en'},fonts={small=font(20),medium=font(24),large=font(30)},clock={millis=function()return clock end},json={encode=encode,decode=decode},storage=storage,
+local ctx={dialog={confirm=function(_,opts,fn)dialogs[#dialogs+1]={opts=opts,fn=fn}end},crosspoint_reader_events=false,state={lang='en'},fonts={small=font(20),medium=font(24),large=font(30)},clock={millis=function()return clock end,now=function()return {epoch_sec=epoch_now+clock//1000}end},json={encode=encode,decode=decode},storage=storage,
  set_tick=function()end,invalidate=function()end,save_state=function()end,quit=function()end,
  net={request=function(_,opts,fn)pending={opts=opts,fn=fn};return {cancel=function()end}end,keep_wifi=function(_,ms)wifi_keep=ms end},
  files=storage,
@@ -355,3 +358,102 @@ do
   ctx.qr=nil
 end
 print('PASS: store connection screen with QR, three entry points and QR release')
+-- Holding Delete keeps deleting until the finger lifts.
+ctx.state.lang='en';ctx.state.token='cp_hold';files['ybx-cache.json']=nil;pending=nil
+on_load(ctx);on_tick();answer(200,items())
+click('Search');click('Title or author')
+if contains('EN') then click('EN') end
+for _,ch in ipairs{'а','б','в','г','д','е'} do click(ch) end
+local del;draw();for _,b in ipairs(controls()) do if b.label=='Del' then del=b end end
+local function touch(phase,x,y) on_input(ctx,{type='pointer',phase=phase,x=x or del.x+5,y=y or del.y+5}) end
+touch('down');assert(contains('абвгд') and not contains('абвгде'),'touching Delete removes one letter at once')
+clock=clock+300;on_tick();assert(contains('абвгд'),'nothing more before the hold delay')
+clock=clock+200;on_tick();assert(contains('абвг') and not contains('абвгд'),'holding starts repeating')
+clock=clock+120;on_tick();clock=clock+120;on_tick();assert(contains('аб') and not contains('абв'),'and keeps repeating')
+touch('up');clock=clock+1000;on_tick();assert(contains('аб'),'lifting the finger stops it, without an extra delete')
+touch('down');touch('move',20,120);clock=clock+1000;on_tick();assert(contains('а') and not contains('аб'),'sliding off the key stops it')
+touch('up');on_input(ctx,{type='key',phase='down',key='back'})
+print('PASS: holding Delete repeats until release')
+-- A 429 without Retry-After must not crash (a missing header returned no value).
+ctx.state.lang='en';ctx.state.token='cp_429';files['ybx-cache.json']=nil;pending=nil
+on_load(ctx);on_tick();answer(429,{})
+assert(contains('Too many requests'),'429 without Retry-After shows the rate-limit message')
+print('PASS: rate limit without Retry-After')
+-- Book file names "<Author> - <Title>.epub"; the CrossPoint reading tracker's
+-- "<name>.track" must fit ctx.storage too; old ybx-N.epub records still load.
+do
+  local saved_files = {}
+  for k, v in pairs(files) do saved_files[k] = v end
+  for k in pairs(saved_files) do if k:sub(-5)=='.epub' then files[k]=nil end end -- start without earlier test books
+  ctx.state.lang='en';ctx.state.token='cp_names';ctx.state.downloads={{id='old',file='ybx-3.epub',title='Old book',author='A'}};files['ybx-3.epub']='PK\3\4old'
+  files['ybx-cache.json']=nil;pending=nil;ctx.crosspoint_reader_events=nil
+  clock=clock+120000 -- past the previous test's 429 pause
+  on_load(ctx);on_tick();answer(200,items())
+  assert(#ctx.state.downloads==1 and ctx.state.downloads[1].file=='ybx-3.epub','an old numbered download is kept')
+  click('На Западном фронте без перемен');click('Download')
+  local name=pending.opts.save and pending.opts.save.name or ctx.state.pending
+  assert(name=='Эрих Мария Ремарк - На Западном фронте без перемен.epub','named after author and title, got '..tostring(name))
+  click('Cancel');pending=nil;on_leave()
+  -- CrossPoint: the tracker writes "<name>.track" to ctx.storage, which here refuses spaces
+  ctx.crosspoint_reader_events=true
+  local real=storage.write
+  storage.write=function(self,n,v) if n:find('%.track$') and n:find(' ') then return nil,'invalid_argument' end;return real(self,n,v) end
+  on_load(ctx);on_tick();if pending then answer(200,items()) end
+  click('Book two');click('Download')
+  local name2=ctx.state.pending
+  assert(name2=='Author_-_Book_two.epub','the tracker sidecar forces the underscore variant, got '..tostring(name2))
+  storage.write=real;click('Cancel');pending=nil;on_leave();ctx.crosspoint_reader_events=false
+  for k in pairs(files) do files[k]=nil end
+  for k, v in pairs(saved_files) do files[k]=v end
+end
+print('PASS: "<Author> - <Title>.epub" names, tracker-safe variant, old names kept')
+-- Update check: strict manifest validation, dialog, throttle and snooze.
+set_epoch(1767225600)
+ctx.state.lang='en';ctx.state.token='cp_update';files['ybx-cache.json']=nil;pending=nil
+ctx.state.update_checked_at=0;ctx.state.update_skip_version=nil;ctx.state.update_skip_until=nil
+local function uv(name)
+  for i=1,300 do local n,v=debug.getupvalue(on_load,i);if not n then break end;if n==name then return v end end
+end
+local cache=uv('cache');if cache then cache.pages={} end
+local u=uv('ui');u.update_check_at=nil;u.library_cache=nil;u.auto_library=false
+clock=clock+120000;pending=nil
+on_load(ctx);on_tick()
+assert(pending and not pending.opts.url:find('/xtapp/',1,true),'a fresh session loads the catalog first')
+answer(200,items())
+assert(pending and pending.opts.url:find('/xtapp/latest.json',1,true),'auto update check after the first catalog')
+answer(200,{app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64),notes=''})
+assert(#dialogs==1 and dialogs[1].opts.title:find('1.6.17',1,true),'dialog announces the new version')
+dialogs[1].fn(ctx,true);draw();assert(contains('1.6.17') and contains('Later'),'confirming opens the update screen')
+click('Later')
+assert(ctx.state.update_skip_version=='1.6.17' and ctx.state.update_skip_until>0,'Later snoozes the version')
+assert(not pending,'Later must not start a download')
+set_epoch(0)
+local function session()
+  pending=nil;on_load(ctx);on_tick();if pending then answer(200,items()) end
+end
+local function open_about() click('Settings');click('Help & diagnostics');click('About') end
+local function check_updates()
+  if uv('message')~='' then click('Back') end
+  click('Check for updates')
+end
+local function update_body(extra)
+  local body={app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64),notes=''}
+  for k,v in pairs(extra or {}) do body[k]=v end
+  answer(200,body)
+end
+session();open_about();check_updates()
+assert(pending and pending.opts.url:find('/xtapp/latest.json?v=1.6.16',1,true),'manual check asks the chosen host and sends the version')
+update_body({url='https://evil.example/x.xtapp'})
+assert(contains('You have the latest version'),'absolute URLs are rejected')
+check_updates();update_body({size=0})
+assert(contains('You have the latest version'),'zero size is rejected')
+check_updates();update_body({app='other'})
+assert(contains('You have the latest version'),'foreign app id is rejected')
+check_updates();update_body({version='1.6.16',url='/xtapp/YBX-1.6.16.xtapp'})
+assert(contains('You have the latest version'),'the same version is not an update')
+check_updates();answer(500,{})
+assert(contains('Could not check for updates'),'a failed request is reported on a manual check')
+check_updates();update_body({})
+assert(#dialogs==2,'manual check ignores the snooze')
+dialogs[2].fn(ctx,false);assert(not pending)
+print('PASS: update check, validation, throttle and snooze')

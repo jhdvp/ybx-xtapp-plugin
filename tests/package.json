@@ -4,7 +4,7 @@
   "private": true,
   "description": "Mocked-host runtime tests for the YBX XTApp",
   "scripts": {
-    "test": "node run-tests.js"
+    "test": "node run-tests.js && node run-tests.js YbxMonkeyTest.lua"
   },
   "dependencies": {
     "wasmoon": "^1.16.0"

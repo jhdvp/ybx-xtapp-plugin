@@ -1,0 +1,12 @@
+{
+  "app_id": "ybx",
+  "display_name": "YBX",
+  "version": "1.6.16",
+  "author": "Community port",
+  "description": "YBX library client (experimental)",
+  "entry": "index.lua",
+  "api": "2.18",
+  "permissions": [
+    "net"
+  ]
+}

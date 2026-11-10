@@ -1,0 +1,12 @@
+{
+  "name": "ybx-xtapp-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mocked-host runtime tests for the YBX XTApp",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "dependencies": {
+    "wasmoon": "^1.16.0"
+  }
+}

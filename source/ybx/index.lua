@@ -1717,6 +1717,44 @@ function F.update_auto()
   if checked>0 and stamp-checked<86400 then return end
   F.update_check(false)
 end
+function F.update_download(m)
+  if ui.update_downloading or download_file or busy then return end
+  local storage,append=append_service()
+  if not (storage and append) then say('update_download_failed');return end
+  local name='YBX-'..m.version..'.xtapp'
+  pcall(function() storage:remove(name) end)
+  local created,result=pcall(function() return storage:write(name,'') end)
+  if not created or not result then say('update_download_failed');return end
+  ui.update_downloading={name=name,size=m.size,bytes=0,error=nil,drawn_at=now()}
+  view='update';tick_rate(true);redraw('')
+  F.update_fetch(m.url..'?v='..VERSION,function(_,chunk)
+    local u=ui.update_downloading
+    if not u or u.error or type(chunk)~='string' then return end
+    if u.bytes+#chunk>m.size or u.bytes+#chunk>2097152 then u.error='size';return end
+    for offset=1,#chunk,262144 do
+      local piece=(offset==1 and #chunk<=262144) and chunk or chunk:sub(offset,offset+262143)
+      local ok,written=pcall(append,storage,name,piece)
+      if not ok or not written then u.error='write';return end
+    end
+    u.bytes=u.bytes+#chunk
+    keep_wifi()
+  end,function(_,status)
+    local u=ui.update_downloading
+    if not u then return end
+    local size=storage:size(name)
+    local head=storage:read(name,0,4)
+    if status~=200 or u.error or size~=m.size or head~='XTAP' then
+      pcall(function() storage:remove(name) end)
+      ui.update_downloading=nil
+      tick_rate(false);say('update_download_failed')
+      return
+    end
+    ui.update_downloading=nil
+    local folder=(type(c.files)=='table' and type(c.files.path)=='string' and c.files.path) or 'AppFiles/ybx'
+    c.state.update_ready={version=m.version,file=name,path=folder}
+    c:save_state();tick_rate(false);view='update_ready';redraw('')
+  end)
+end
 local function header_ui(g,title,back_action,settings,refresh)
   local right=refresh and 344 or settings and 400 or 456
   if back_action then ib(g,'back',12,14,back_action,'Back');text(g,76,24,fit(title,right-76,'large'),'large')
@@ -2432,8 +2470,20 @@ function on_draw(_,g)
     if type(m)~='table' then empty(g,T('update_none'),T('update_none_body'),'refresh')
     else
       paragraph(g,24,120,T('update_available_body',m.version,math.floor((m.size+512)//1024)),432,4)
-      action(g,700,T('update_later'),function() F.update_snooze(m);go('about') end,'close',true)
+      if ui.update_downloading then
+        local done=math.floor(ui.update_downloading.bytes*100/math.max(1,m.size))
+        text(g,24,360,T('update_downloading',done))
+      else
+        action(g,624,T('update_now'),function() F.update_download(m) end,'download')
+        action(g,700,T('update_later'),function() F.update_snooze(m);go('about') end,'close',true)
+      end
     end
+  elseif view=='update_ready' then
+    header_ui(g,T('update_ready_title'),back)
+    local ready=c.state.update_ready or {}
+    paragraph(g,24,120,T('update_saved',tostring(ready.path or '')..'/'..tostring(ready.file or '')),432,6)
+    paragraph(g,24,320,T('update_saved_hint'),432,4)
+    action(g,700,T('update_close'),function() go('about') end,'check')
   elseif view=='about' then
     header_ui(g,T('about_title'),back);empty(g,T('welcome_title'),T('about_body'),'library')
     row(g,512,T('update_check'),function() F.update_check(true) end,'refresh')
@@ -2480,6 +2530,9 @@ function on_input(_,event)
 end
 
 function on_tick()
+  if ui.update_downloading and view=='update' and now()-(ui.update_downloading.drawn_at or 0)>=300 then
+    ui.update_downloading.drawn_at=now();redraw('')
+  end
   if kb.hold then
     local h=kb.hold
     if view~='keyboard' or now()>h.stop or kb.text=='' then F.kb_hold_stop()

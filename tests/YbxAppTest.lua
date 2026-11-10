@@ -457,3 +457,39 @@ check_updates();update_body({})
 assert(#dialogs==2,'manual check ignores the snooze')
 dialogs[2].fn(ctx,false);assert(not pending)
 print('PASS: update check, validation, throttle and snooze')
+-- Downloading the package: exact size, XTAP magic, cleanup on every failure.
+set_epoch(0)
+ctx.state.lang='en';ctx.state.token='cp_dl';files['ybx-cache.json']=nil;pending=nil
+ctx.state.update_checked_at=0;ctx.state.update_skip_version=nil;ctx.state.update_skip_until=nil;ctx.state.update_ready=nil
+local function dl_session()
+  pending=nil;on_load(ctx);on_tick();if pending then answer(200,items()) end
+end
+local function dl_about() click('Settings');click('Help & diagnostics');click('About') end
+local function offer_update()
+  if uv('message')~='' then click('Back') end
+  if uv('view')~='about' then click('Back') end
+  click('Check for updates')
+  answer(200,{app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64)})
+  assert(#dialogs>0,'manual check opens the update dialog')
+  dialogs[#dialogs].fn(ctx,true);draw()
+end
+dl_session();dl_about();offer_update()
+click('Update')
+assert(pending and pending.opts.url:find('/xtapp/YBX-1.6.17.xtapp',1,true),'update screen downloads the package')
+local body='XTAP'..string.rep('x',176920)
+pending.opts.on_data(ctx,body);answer(200,{}, {['content-length']=tostring(#body)})
+draw();assert(files['YBX-1.6.17.xtapp']==body,'the package is written to the app folder')
+assert(ctx.state.update_ready and ctx.state.update_ready.version=='1.6.17')
+assert(contains('All Files') and contains('YBX-1.6.17.xtapp'),'install instructions name the file')
+click('Close update');assert(not pending)
+offer_update();click('Update')
+pending.opts.on_data(ctx,'XTAP'..string.rep('x',1000));answer(200,{})
+assert(not files['YBX-1.6.17.xtapp'],'a short download is removed')
+assert(contains('Could not download the update'),'short transfer reports an error')
+click('Back')
+offer_update();click('Update');fail_append=true
+pending.opts.on_data(ctx,'XTAP'..string.rep('x',176920));answer(200,{})
+fail_append=false
+assert(not files['YBX-1.6.17.xtapp'],'a storage failure removes the partial file')
+click('Back')
+print('PASS: update download verifies size and XTAP magic')

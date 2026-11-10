@@ -7,8 +7,8 @@ The firmware translation catalog cannot supply strings to stock Licorice package
 The public protocol reference is https://ybx.app/crosspoint-plugin/device.json
 and https://github.com/jhdvp/ybx-crosspoint-plugin (plugin version 1.6.16).
 No upstream plugin JavaScript is included. Lua source follows the repository license.
-icon.png is the unmodified YBX website apple-touch-icon.png, fetched from
-https://ybx.app/static/app/apple-touch-icon.png at the user's request. The YBX
+icon.png is the YBX brand mark (three bars on a rounded square) redrawn at
+180x180, 1 bit, after https://ybx.app/static/app/apple-touch-icon.png. The YBX
 brand artwork is attributed to YBX; no repository-license claim is made for it.
 
 Implemented:
@@ -475,3 +475,46 @@ Compared against ybx-plugin 1.6.15 (device.json + the web page plugin.js).
   v= parameter on every request, including the stock lock-screen refresh, now
   report 1.6.16. Behaviour is unchanged; the quote-key handling already accepts
   both trusted clippings bases (main and the EU mirror).
+
+Hold to delete (after 1.6.16):
+- Holding Delete on the keyboard keeps deleting: one letter on touch, then
+  after 450 ms one every 120 ms until the finger lifts or slides off the key.
+  The tick runs at 100 ms only while held, then returns to the download or
+  idle rate. A plain tap still deletes exactly one letter.
+- Fixed: header() returned no value for a missing header, and tonumber() of
+  nothing raises an error, so a 429 without Retry-After (or a download without
+  Content-Length) would crash. It now returns nil explicitly.
+
+Testing: tests/YbxMonkeyTest.lua drives the app on stock and CrossPoint hosts,
+signed in or not, with random taps, keys, touch holds, ticks, restarts (fresh
+Lua state), resumes, language switches and corrupted saved files/state, while
+every request gets an endpoint-shaped random answer (valid, missing fields,
+wrong types, no response, 0/401/403/404 with and without device-removed,
+429 with and without Retry-After, 409/5xx, redirects, short downloads). It
+fails on any Lua error, off-screen drawing, or a busy screen with no request
+in flight. Release run: 2000 runs x 500 steps. With the header() fix
+reverted it finds the crash at three call sites.
+
+Book file names (after 1.6.16):
+- Downloaded books are named "<Author> - <Title>.epub" instead of a number.
+  Storage name rules are not fully known (an early probe said no spaces;
+  Cyrillic untested), so each candidate is tried with an empty write and the
+  first accepted one is used: as written, then spaces as underscores, then
+  transliterated Latin, then the old numbered name. A name already used by
+  another book gets " (2)" and so on. Names stay under ~170 bytes by shortening
+  the title. Old numbered downloads keep working.
+- On CrossPoint the reading tracker writes "<name>.track" to ctx.storage, so a
+  name is used only if that sidecar name is accepted too. File-name checks in
+  the downloads list and the reader book map accept any safe .epub name; a stale
+  pending download is removed only if it is not a saved book.
+
+Update channel (after 1.6.16):
+- The app asks {host}/xtapp/latest.json at most once a day after the first
+  shelf load (only when the device clock is available) and on demand from
+  About. A newer version opens a dialog; the package downloads into the app
+  files folder and the app shows its ctx.files.path and the All Files
+  instructions. The host has no install API and cannot open .xtapp, so
+  installation stays manual; books, settings and the token survive it.
+- Publishing: python scripts/publish_xtapp.py --notes "..." builds, writes
+  static/xtapp/latest.json plus the package into the site and creates the
+  GitHub release v<version>. Rollout to devices is the site only.

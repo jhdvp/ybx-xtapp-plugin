@@ -20,21 +20,25 @@
 - Статистика чтения, календарь, достижения; карточка экрана сна 480×800.
 - Ручная настройка KOSync и отдельного ключа для цитат.
 
-## Основной сервер и зеркало
+## Основной сервер и зеркала
 
 - Основной адрес — `https://my.ybx.app`.
-- Европейское зеркало — `https://emy.ybx.app` (и `esync`/`eopds`) — для тех, у
-  кого основной адрес заблокирован. Зеркало сохраняет путь и общий магазин
-  данных.
-- Для цитат приложение принимает **обе** доверенные базы
-  (`https://my.ybx.app/api/v1/crosspoint/kosync` и
-  `https://emy.ybx.app/api/v1/crosspoint/kosync`): сервер отдаёт базу того хоста,
-  через который пришёл запрос, поэтому обход работает и для цитат. Любой другой
-  хост, схема или путь отклоняются.
+- Европейское зеркало — `https://emy.ybx.app` (и `esync`/`eopds`), португальское —
+  `https://pmy.ybx.app` (и `psync`/`popds`) — для тех, у кого основной адрес
+  заблокирован. Зеркала сохраняют путь и общий магазин данных.
+- Сервер выбирается в Help & diagnostics → Server: Auto / Main / Europe /
+  Portugal. В Auto запрос, до которого не удалось достучаться, уходит на следующий
+  хост (main → Europe → Portugal), каждый хост — не больше раза на запрос; ответы
+  HTTP хост не меняют, а ответившее зеркало остаётся предпочтительным ещё
+  5 минут. Main, Europe и Portugal говорят ровно со своим адресом.
+- Для цитат приложение принимает **все три** доверенные базы (`my.ybx.app`,
+  `emy.ybx.app`, `pmy.ybx.app` + `/api/v1/crosspoint/kosync`): сервер отдаёт базу
+  того хоста, через который пришёл запрос, поэтому обход работает и для цитат.
+  Любой другой хост, схема или путь отклоняются.
 
 ## Установка
 
-1. Скопируйте `package/YBX-1.6.16.xtapp` в корень SD-карты.
+1. Скопируйте `package/YBX-1.6.17.xtapp` в корень SD-карты.
 2. Установите через **All Files** на устройстве.
 3. Откройте приложение из ящика **Ink App**.
 
@@ -45,7 +49,7 @@
 
 ```bash
 python scripts/build_ybx_stock_source.py /path/to/staged-ybx
-python touch-licorice-apps/xtpack.py /path/to/staged-ybx -o package/YBX-1.6.16.xtapp
+python touch-licorice-apps/xtpack.py /path/to/staged-ybx -o package/YBX-1.6.17.xtapp
 ```
 
 `build_ybx_stock_source.py` копирует runtime, проверяет, что встроенный в
@@ -115,7 +119,7 @@ ybx-xtapp-plugin/
 │   ├── run-tests.js                # запуск тестов на wasmoon (Lua 5.4)
 │   └── package.json                # зависимость wasmoon и `npm test`
 ├── package/
-│   └── YBX-1.6.16.xtapp            # собранный пакет для SD-карты
+│   └── YBX-1.6.17.xtapp            # собранный пакет для SD-карты
 ├── .github/workflows/
 │   └── validate.yml                # CI: validate_source.py + npm test
 ├── .gitignore
@@ -140,7 +144,7 @@ ybx-xtapp-plugin/
 `scripts/` остаются в репозитории и в пакет не входят.
 
 Версия приложения следует версии плагина CrossPoint, который оно повторяет:
-**1.6.16**.
+**1.6.17**.
 
 ## Лицензия
 

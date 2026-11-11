@@ -80,12 +80,13 @@ return S
 end)()
 -- END SHARED SLEEP CARD
 -- Independent client for the public YBX CrossPoint service contract.
--- Main server and its European mirror (plugin 1.6.15). In Auto mode a request
--- that cannot reach one host is retried once on the other, and a working mirror
--- stays preferred for five minutes; Main and Europe use exactly one host.
-local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app'}
+-- Main server with its European and Portuguese mirrors (plugin 1.6.15). In Auto
+-- mode a request that cannot reach one host moves on to the next one in turn, and
+-- a working mirror stays preferred for five minutes; Main, Europe and Portugal
+-- each use exactly one host.
+local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app',pt='https://pmy.ybx.app'}
 local API_PATH='/api/v1/crosspoint'
-local VERSION = '1.6.16'
+local VERSION = '1.6.17'
 local APP_VERSION = VERSION -- the app follows the CrossPoint plugin version
 local c, message, buttons, busy = nil, '', {}, false
 
@@ -377,6 +378,7 @@ local STR={
  -- server mirror
  server={'Server','Сервер','Сервер'},
  server_auto={'Auto','Авто','Авто'}, server_main={'Main','Основной','Негізгі'}, server_eu={'Europe','Европа','Еуропа'},
+ server_pt={'Portugal','Португалия','Португалия'},
  server_note={'If sleep refresh or sync before sleep is on, turn it off and on again.','Если включены автообновление или синхронизация перед сном, выключите и включите их снова.','Автожаңарту не ұйықтар алдындағы синхрондау қосулы болса, оны өшіріп, қайта қосыңыз.'},
  err_removed={'This reader was removed in your YBX account. Sign out in Settings > Account and connect it again.','Это устройство удалено в кабинете YBX. Выйдите в «Настройки → Аккаунт» и подключите его заново.','Бұл құрылғы YBX кабинетінде жойылған. «Баптаулар → Аккаунт» бөлімінде шығып, қайта қосыңыз.'},
  err_unavailable={'The library is temporarily unavailable. Try again later.','Библиотека временно недоступна. Попробуйте позже.','Кітапхана уақытша қолжетімсіз. Кейінірек көріңіз.'},
@@ -612,20 +614,25 @@ local function short_utf8(value,count)
   return stop and text:sub(1,stop-1) or text
 end
 local function now() return c.clock:millis() end
-local mirror_until=0
-local function server_mode() local m=c and c.state.server;return (m=='main' or m=='eu') and m or 'auto' end
+local mirror={host=nil,keep_until=0}
+local function server_mode() local m=c and c.state.server;return (m=='main' or m=='eu' or m=='pt') and m or 'auto' end
 local function api_host()
   local m=server_mode()
-  if m=='eu' or (m=='auto' and mirror_until>(now() or 0)) then return HOSTS.eu end
-  return HOSTS.main
+  if m=='auto' then return mirror.host~=nil and mirror.keep_until>(now() or 0) and mirror.host or HOSTS.main end
+  return HOSTS[m]
 end
 -- Addresses handed to the firmware are kept, so they follow only an explicit choice.
-local function fixed_host() return server_mode()=='eu' and HOSTS.eu or HOSTS.main end
+local function fixed_host() local m=server_mode();return m=='auto' and HOSTS.main or HOSTS[m] end
 local function host_of(url) for _,h in pairs(HOSTS) do if url:sub(1,#h+1)==h..'/' then return h end end end
 local function note_host(h)
   if server_mode()~='auto' or not h then return end
-  mirror_until=h==HOSTS.eu and (now() or 0)+5*60*1000 or 0
+  if h==HOSTS.main then mirror.host=nil;mirror.keep_until=0 else mirror.host=h;mirror.keep_until=(now() or 0)+5*60*1000 end
 end
+-- Auto moves along this list on a connection failure only, so every host is
+-- tried once per request. The plain-HTTP KOSync address follows the same keys.
+F.auto_order={HOSTS.main,HOSTS.eu,HOSTS.pt}
+F.sync_hosts={main='http://sync.ybx.app',eu='http://esync.ybx.app',pt='http://psync.ybx.app'}
+function F.next_host(h) for i,x in ipairs(F.auto_order) do if x==h then return F.auto_order[i%#F.auto_order+1] end end end
 -- Keep the radio awake while the app is talking: the reader drops Wi-Fi when it
 -- looks idle, which kills a long EPUB transfer mid-body (the community network
 -- apps all do this). The argument is milliseconds; refresh at most every 30 s.
@@ -760,7 +767,7 @@ local function request(path, body, auth, done, headers, on_data, save, timeout)
   local generation=request_id
   local received=false
   redraw('')
-  local function send(url,retried)
+  local function send(url,hops)
     local ok, handle, err=pcall(function()
       return c.net:request({url=url,method=body and 'POST' or 'GET',on_data=on_data and function(ctx,chunk)
         if generation==request_id and busy then received=true;on_data(ctx,chunk) end
@@ -769,10 +776,9 @@ local function request(path, body, auth, done, headers, on_data, save, timeout)
         if generation~=request_id then return end
         local status=type(resp)=='table' and tonumber(resp.status) or 0
         local host=host_of(url)
-        -- Unreachable host: try the other one once (Auto mode, nothing received yet).
-        if status<=0 and host and not retried and not received and not save and server_mode()=='auto' then
-          local other=host==HOSTS.main and HOSTS.eu or HOSTS.main
-          request_started=now();send(other..url:sub(#host+1),true);return
+        -- Unreachable host: move on to the next one (Auto mode, nothing received yet).
+        if status<=0 and host and hops<#F.auto_order-1 and not received and not save and server_mode()=='auto' then
+          request_started=now();send(F.next_host(host)..url:sub(#host+1),hops+1);return
         end
         busy=false; active=nil
         if type(resp)~='table' then say('err_no_response'); return end
@@ -792,7 +798,7 @@ local function request(path, body, auth, done, headers, on_data, save, timeout)
     elseif generation==request_id and busy then active=handle
     else pcall(function() handle:cancel() end) end
   end
-  send(path:sub(1,8)=='https://' and path or api_host()..API_PATH..path,false)
+  send(path:sub(1,8)=='https://' and path or api_host()..API_PATH..path,0)
 end
 local function decode(resp)
   if type(resp.body)~='string' then return {} end
@@ -1435,12 +1441,13 @@ function F.clippings_get()
     if status~=200 then failure(resp,status);return end
     local d=decode(resp);local key=d.kosync_key
     -- The server answers with the clippings base of the host this request used:
-    -- main when my.ybx.app is reachable, the EU mirror when it is blocked. Both
-    -- bases share one clipping store, so both are accepted; nothing else is.
+    -- main when my.ybx.app is reachable, a mirror when it is blocked. All bases
+    -- share one clipping store, so all are accepted; anything else is not.
     local base=API_PATH..'/kosync'
     local url=d.sync_url
+    local trusted=type(url)=='string' and host_of(url) or nil
     if type(key)~='string' or not key:match('^kosync_[%w_-]+$') or #key~=50 or d.clippings_enabled~=true
-      or (url~=HOSTS.main..base and url~=HOSTS.eu..base) then say('clippings_invalid');return end
+      or not trusted or url~=trusted..base then say('clippings_invalid');return end
     ui.clip_key=key;ui.clip_url=d.sync_url;ui.reveal=false;view='clippings';redraw('')
   end)
 end
@@ -1660,14 +1667,14 @@ end
 -- Raw host request outside /api/v1 (the update catalog lives at /xtapp/).
 function F.update_fetch(path,on_data,done)
   local base=api_host()
-  local function send(host,tried)
+  local function send(host,hops)
     local url=host..path
     local ok,handle=pcall(function()
       return c.net:request({url=url,method='GET',timeout_ms=20000,
         on_data=on_data and function(_,chunk) on_data(_,chunk) end},function(_,resp)
         local status=type(resp)=='table' and tonumber(resp.status) or 0
-        if status<=0 and not tried and server_mode()=='auto' then
-          send(host==HOSTS.main and HOSTS.eu or HOSTS.main,true);return
+        if status<=0 and hops<#F.auto_order-1 and server_mode()=='auto' then
+          send(F.next_host(host),hops+1);return
         end
         if status>0 then note_host(host_of(url)) end
         done(resp,status)
@@ -1675,7 +1682,7 @@ function F.update_fetch(path,on_data,done)
     end)
     if not ok then done(nil,0) end
   end
-  send(base,false)
+  send(base,0)
 end
 function F.update_snooze(m)
   c.state.update_skip_version=m.version
@@ -2422,7 +2429,7 @@ function on_draw(_,g)
       row(g,470,T('clippings_title'),function() ui.reveal=false;go('clippings') end,'book')
       action(g,700,T('kosync_get'),kosync,'refresh')
     else
-      local sync=server_mode()=='eu' and 'http://esync.ybx.app' or 'http://sync.ybx.app'
+      local sync=F.sync_hosts[server_mode()=='auto' and 'main' or server_mode()]
       text(g,24,146,T('kosync_server'));text(g,24,176,sync);text(g,24,204,'/api/v1/crosspoint/kosync')
       paragraph(g,24,236,T('kosync_https',fixed_host():sub(9)),432,2)
       text(g,24,306,T('kosync_user'));text(g,24,346,T('kosync_pass'))
@@ -2451,7 +2458,7 @@ function on_draw(_,g)
     row(g,236,T('retry_reports'),sync_events,'refresh');row(g,304,T('conn_help'),function() go('offline') end,'wifi');row(g,372,T('about_title'),function() go('about') end,'info')
     local mode=server_mode()
     row(g,440,T('server'),function()
-      local next_mode=({auto='main',main='eu',eu='auto'})[mode];c.state.server=next_mode~='auto' and next_mode or nil;c:save_state();mirror_until=0
+      local next_mode=({auto='main',main='eu',eu='pt',pt='auto'})[mode];c.state.server=next_mode~='auto' and next_mode or nil;c:save_state();mirror.host=nil;mirror.keep_until=0
       ui.server_note=true;redraw('')
     end,'wifi',T('server_'..mode))
     if ui.server_note then paragraph(g,24,518,T('server_note'),432,3) end

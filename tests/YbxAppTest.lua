@@ -282,7 +282,7 @@ assert(files['ybx-cache.json']=='','signing out wipes the library cache')
 print('PASS: Russian default, cached launch, quiet refresh, prefetch, cancellation and sign-out wipe')
 -- 0.12: plugin 1.6.15 parity.
 ctx.state.lang='en';ctx.state.token='cp_parity';ctx.state.server=nil;files['ybx-cache.json']=nil;pending=nil
-on_load(ctx);on_tick();assert(pending.opts.url:find('v=1.6.16',1,true),'requests carry the plugin version');answer(200,items())
+on_load(ctx);on_tick();assert(pending.opts.url:find('v=1.6.17',1,true),'requests carry the plugin version');answer(200,items())
 -- Stats: books this year, goal pace, continue reading and the book card.
 click('Stats');answer(200,{today='2026-11-09',today_minutes={value=20},books_finished_this_year={value=5},
   year_goal={finished=5,goal=12,delta=3},week_days={},currently_reading={{id='r1',title='Reading one',author='A',percent={value=42}}}})
@@ -301,7 +301,17 @@ clock=clock+6*60*1000;click('Refresh');assert(pending.opts.url:find('https://my.
 click('Settings');click('Help & diagnostics');click('Server');click('Server');assert(ctx.state.server=='eu' and contains('Europe'))
 click('Back');click('Back');click('Refresh');assert(pending.opts.url:find('https://emy.ybx.app/',1,true));answer(0,{})
 assert(not pending and contains('No network'),'a fixed server is never swapped')
-click('Back');click('Settings');click('Help & diagnostics');click('Server');assert(ctx.state.server==nil);click('Back');click('Back')
+click('Back');click('Settings');click('Help & diagnostics');click('Server');assert(ctx.state.server=='pt' and contains('Portugal'),'the selector cycles Europe to Portugal')
+click('Back');click('Back');click('Refresh');assert(pending.opts.url:find('https://pmy.ybx.app/',1,true),'a manual choice uses its own host only');answer(0,{})
+assert(not pending and contains('No network'),'a fixed server is never swapped')
+click('Back');click('Settings');click('Help & diagnostics');click('Server');assert(ctx.state.server==nil and contains('Auto'),'Portugal cycles back to Auto');click('Back');click('Back')
+-- Auto walks main -> Europe -> Portugal, one host per move, and only when the host could not be reached.
+click('Refresh');assert(pending.opts.url:find('https://my.ybx.app/',1,true));answer(0,{})
+assert(pending and pending.opts.url:find('https://emy.ybx.app/',1,true),'auto moves from main to Europe');answer(0,{})
+assert(pending and pending.opts.url:find('https://pmy.ybx.app/',1,true),'auto moves on from Europe to Portugal')
+answer(200,items());click('Refresh');assert(pending.opts.url:find('https://pmy.ybx.app/',1,true),'Portugal stays preferred once it answered');answer(200,items())
+clock=clock+6*60*1000;click('Refresh');assert(pending.opts.url:find('https://my.ybx.app/',1,true),'main is tried again after five minutes')
+answer(503,{});assert(contains('temporarily unavailable'),'an HTTP answer never moves to another host');click('Back')
 -- Clear messages for a removed device and a server outage; 403 signs out like 401.
 click('Refresh');answer(404,{error='not_found'},{['X-YBX-Device-Removed']='true'});assert(contains('removed in your YBX account'));click('Back')
 click('Refresh');answer(502,{});assert(contains('temporarily unavailable'));click('Back')
@@ -314,11 +324,15 @@ click('Quotes and notes');click('Get quotes key');assert(pending.opts.url:find('
 local clip='kosync_'..string.rep('a',43)
 answer(200,{kosync_key=clip,sync_url='https://my.ybx.app/api/v1/crosspoint/kosync',clippings_enabled=true});click('Reveal credentials');assert(contains(clip:sub(1,28)))
 click('Revoke quotes key');assert(pending.opts.url:find('/auth/clippings-key/revoke',1,true));answer(204,{});assert(contains('Quotes key revoked'))
--- The clippings sync_url may be the main host or the EU mirror (both answer the
--- same store); any other host or path is refused.
+-- The clippings sync_url may be any YBX mirror base the request went through
+-- (they answer one store); any other host or path is refused.
 click('Back');click('Get quotes key')
 answer(200,{kosync_key=clip,sync_url='https://emy.ybx.app/api/v1/crosspoint/kosync',clippings_enabled=true})
 assert(contains('emy.ybx.app'),'the EU mirror clippings URL is accepted for a blocked reader')
+click('Revoke quotes key');answer(204,{})
+click('Back');click('Get quotes key')
+answer(200,{kosync_key=clip,sync_url='https://pmy.ybx.app/api/v1/crosspoint/kosync',clippings_enabled=true})
+assert(contains('pmy.ybx.app'),'the Portuguese mirror clippings URL is accepted too')
 click('Revoke quotes key');answer(204,{})
 click('Back');click('Get quotes key')
 answer(200,{kosync_key=clip,sync_url='https://my.ybx.app/wrong-path',clippings_enabled=true})
@@ -328,7 +342,7 @@ answer(200,{kosync_key=clip,sync_url='https://evil.example/api/v1/crosspoint/kos
 assert(contains('unsuitable quotes key'),'an untrusted clippings host must be rejected')
 click('Back');click('Back');click('Back');click('Back')
 click('Refresh');answer(403,{});assert(ctx.state.token=='' and contains('Sign in again'),'403 signs out like 401')
-print('PASS: plugin 1.6.16 parity: stats, book card, mirror, error messages, KOSync check and quotes key')
+print('PASS: plugin 1.6.17 parity: stats, book card, mirror, error messages, KOSync check and quotes key')
 -- 0.12.1: store shortcuts on the Library screen.
 ctx.state.lang='en';ctx.state.token='cp_store';files['ybx-cache.json']=nil;pending=nil
 on_load(ctx);on_tick();answer(200,items())
@@ -421,11 +435,11 @@ on_load(ctx);on_tick()
 assert(pending and not pending.opts.url:find('/xtapp/',1,true),'a fresh session loads the catalog first')
 answer(200,items())
 assert(pending and pending.opts.url:find('/xtapp/latest.json',1,true),'auto update check after the first catalog')
-answer(200,{app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64),notes=''})
-assert(#dialogs==1 and dialogs[1].opts.title:find('1.6.17',1,true),'dialog announces the new version')
-dialogs[1].fn(ctx,true);draw();assert(contains('1.6.17') and contains('Later'),'confirming opens the update screen')
+answer(200,{app='ybx-xtapp',version='1.6.18',url='/xtapp/YBX-1.6.18.xtapp',size=176924,sha256=string.rep('a',64),notes=''})
+assert(#dialogs==1 and dialogs[1].opts.title:find('1.6.18',1,true),'dialog announces the new version')
+dialogs[1].fn(ctx,true);draw();assert(contains('1.6.18') and contains('Later'),'confirming opens the update screen')
 click('Later')
-assert(ctx.state.update_skip_version=='1.6.17' and ctx.state.update_skip_until>0,'Later snoozes the version')
+assert(ctx.state.update_skip_version=='1.6.18' and ctx.state.update_skip_until>0,'Later snoozes the version')
 assert(not pending,'Later must not start a download')
 set_epoch(0)
 local function session()
@@ -437,19 +451,19 @@ local function check_updates()
   click('Check for updates')
 end
 local function update_body(extra)
-  local body={app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64),notes=''}
+  local body={app='ybx-xtapp',version='1.6.18',url='/xtapp/YBX-1.6.18.xtapp',size=176924,sha256=string.rep('a',64),notes=''}
   for k,v in pairs(extra or {}) do body[k]=v end
   answer(200,body)
 end
 session();open_about();check_updates()
-assert(pending and pending.opts.url:find('/xtapp/latest.json?v=1.6.16',1,true),'manual check asks the chosen host and sends the version')
+assert(pending and pending.opts.url:find('/xtapp/latest.json?v=1.6.17',1,true),'manual check asks the chosen host and sends the version')
 update_body({url='https://evil.example/x.xtapp'})
 assert(contains('You have the latest version'),'absolute URLs are rejected')
 check_updates();update_body({size=0})
 assert(contains('You have the latest version'),'zero size is rejected')
 check_updates();update_body({app='other'})
 assert(contains('You have the latest version'),'foreign app id is rejected')
-check_updates();update_body({version='1.6.16',url='/xtapp/YBX-1.6.16.xtapp'})
+check_updates();update_body({version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp'})
 assert(contains('You have the latest version'),'the same version is not an update')
 check_updates();answer(500,{})
 assert(contains('Could not check for updates'),'a failed request is reported on a manual check')
@@ -469,27 +483,65 @@ local function offer_update()
   if uv('message')~='' then click('Back') end
   if uv('view')~='about' then click('Back') end
   click('Check for updates')
-  answer(200,{app='ybx-xtapp',version='1.6.17',url='/xtapp/YBX-1.6.17.xtapp',size=176924,sha256=string.rep('a',64)})
+  answer(200,{app='ybx-xtapp',version='1.6.18',url='/xtapp/YBX-1.6.18.xtapp',size=176924,sha256=string.rep('a',64)})
   assert(#dialogs>0,'manual check opens the update dialog')
   dialogs[#dialogs].fn(ctx,true);draw()
 end
 dl_session();dl_about();offer_update()
 click('Update')
-assert(pending and pending.opts.url:find('/xtapp/YBX-1.6.17.xtapp',1,true),'update screen downloads the package')
+assert(pending and pending.opts.url:find('/xtapp/YBX-1.6.18.xtapp',1,true),'update screen downloads the package')
 local body='XTAP'..string.rep('x',176920)
 pending.opts.on_data(ctx,body);answer(200,{}, {['content-length']=tostring(#body)})
-draw();assert(files['YBX-1.6.17.xtapp']==body,'the package is written to the app folder')
-assert(ctx.state.update_ready and ctx.state.update_ready.version=='1.6.17')
-assert(contains('All Files') and contains('YBX-1.6.17.xtapp'),'install instructions name the file')
+draw();assert(files['YBX-1.6.18.xtapp']==body,'the package is written to the app folder')
+assert(ctx.state.update_ready and ctx.state.update_ready.version=='1.6.18')
+assert(contains('All Files') and contains('YBX-1.6.18.xtapp'),'install instructions name the file')
 click('Close update');assert(not pending)
 offer_update();click('Update')
 pending.opts.on_data(ctx,'XTAP'..string.rep('x',1000));answer(200,{})
-assert(not files['YBX-1.6.17.xtapp'],'a short download is removed')
+assert(not files['YBX-1.6.18.xtapp'],'a short download is removed')
 assert(contains('Could not download the update'),'short transfer reports an error')
 click('Back')
 offer_update();click('Update');fail_append=true
 pending.opts.on_data(ctx,'XTAP'..string.rep('x',176920));answer(200,{})
 fail_append=false
-assert(not files['YBX-1.6.17.xtapp'],'a storage failure removes the partial file')
+assert(not files['YBX-1.6.18.xtapp'],'a storage failure removes the partial file')
 click('Back')
 print('PASS: update download verifies size and XTAP magic')
+-- Portugal: one explicit choice drives the API host, both KOSync addresses and the
+-- host the stock lock screen refreshes from.
+do
+  local function settle() for _=1,20 do if not pending then return end;answer(200,items()) end end
+  ctx.state.lang='en';ctx.state.token='cp_pt';ctx.state.server='pt';ctx.crosspoint_sleep_refresh=nil
+  files['ybx-cache.json']=nil;pending=nil
+  on_load(ctx);on_tick();settle()
+  click('Library');settle();click('Refresh')
+  assert(pending and pending.opts.url:find('https://pmy.ybx.app/api/v1/crosspoint',1,true),'Portugal answers only from its own host');settle()
+  click('Settings');click('KOSync');click('Get setup details');answer(200,{kosync_key='kosync_secret'})
+  assert(contains('http://psync.ybx.app') and contains('pmy.ybx.app'),'both KOSync addresses of the Portuguese mirror')
+  click('Check key');assert(pending.opts.url=='https://pmy.ybx.app/api/v1/crosspoint/kosync/users/auth','the key check stays on the Portuguese host');answer(200,{})
+  click('Back');click('Back');click('Sleep screen');click('Refresh picture')
+  assert(pending and pending.opts.url:find('https://pmy.ybx.app/api/v1/crosspoint/sleep-image',1,true),'the sleep card is fetched from Portugal')
+  pending.opts.on_data(ctx,card);answer(200,{},{['content-length']='48062'});on_tick();click('Back')
+  click('Auto refresh');click('Refresh before sleep');settle()
+  assert(decode(nil,files['ybx-stock-sleep.json']).host=='https://pmy.ybx.app','the stock lock screen is pointed at Portugal')
+  print('PASS: Portugal mirror - manual API host, KOSync addresses and the saved lock-screen host')
+end
+-- src/lockscreen.lua accepts every YBX host the app can hand it, and falls back to
+-- main for a host it does not know or a plain-HTTP one.
+do
+  SleepCard={size=48062,width=480,height=800,current=function()return nil end}
+  local lock={storage=storage,json={encode=encode,decode=decode},net=ctx.net,invalidate=function()end}
+  dofile(arg[1]:match('^(.*)/[^/]*$')..'/src/lockscreen.lua')
+  local function lock_refresh(host,want)
+    files['ybx-stock-sleep.json']=encode(nil,{token='cp_lock',host=host})
+    pending=nil;on_load();on_draw(lock,g)
+    local url=assert(pending,'the lock screen asks for a card').opts.url
+    assert(url:find(want..'/api/v1/crosspoint/sleep-image',1,true),'the lock screen refreshes from '..want..' for host '..tostring(host))
+  end
+  lock_refresh('https://pmy.ybx.app','https://pmy.ybx.app')
+  lock_refresh('https://emy.ybx.app','https://emy.ybx.app')
+  lock_refresh('https://my.ybx.app','https://my.ybx.app')
+  lock_refresh('http://pmy.ybx.app','https://my.ybx.app')
+  lock_refresh('https://evil.example','https://my.ybx.app')
+  print('PASS: stock lock screen accepts the Portuguese host and refuses untrusted ones')
+end

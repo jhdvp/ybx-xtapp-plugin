@@ -5,7 +5,7 @@ This is a standalone Lua XTApp package, not a port of the website into the firmw
 Its app-local UI is currently English-only; Cyrillic titles/search are supported.
 The firmware translation catalog cannot supply strings to stock Licorice packages.
 The public protocol reference is https://ybx.app/crosspoint-plugin/device.json
-and https://github.com/jhdvp/ybx-crosspoint-plugin (plugin version 1.6.16).
+and https://github.com/jhdvp/ybx-crosspoint-plugin (plugin version 1.6.17).
 No upstream plugin JavaScript is included. Lua source follows the repository license.
 icon.png is the YBX brand mark (three bars on a rounded square) redrawn at
 180x180, 1 bit, after https://ybx.app/static/app/apple-touch-icon.png. The YBX
@@ -415,7 +415,8 @@ second line. fill() rounds to whole pixels and skips empty spans.
 Compared against ybx-plugin 1.6.15 (device.json + the web page plugin.js).
 - Requests now carry v=1.6.15 (also the stock lock-screen refresh).
 - European mirror (emy.ybx.app). Help & diagnostics -> Server: Auto / Main /
-  Europe. Auto retries a request that got no HTTP answer once on the other host
+  Europe (Portugal joined later, see "Portuguese mirror"). Auto retries a request
+  that got no HTTP answer once on the other host
   (not for firmware-saved downloads or after data arrived) and keeps a working
   mirror for 5 minutes, like the plugin. Main and Europe use exactly one host.
   Addresses handed to the firmware (sleep refresh, sync before sleep, stock
@@ -427,8 +428,9 @@ Compared against ybx-plugin 1.6.15 (device.json + the web page plugin.js).
 - Book card: GET /reading/books/{id} -> progress, time read, sessions, start and
   finish dates and data sources, with Open book to reach download/read.
 - KOSync: shows the plain-HTTP sync host the plugin now uses
-  (http://sync.ybx.app/..., esync for Europe) plus the HTTPS address, and
-  Check key verifies the issued key against /kosync/users/auth over HTTPS.
+  (http://sync.ybx.app/..., esync for Europe, psync for Portugal) plus the HTTPS
+  address, and Check key verifies the issued key against /kosync/users/auth over
+  HTTPS.
 - Quotes and notes: separate KOSync key via /auth/clippings-key, validated like
   the plugin (kosync_ + 43 chars, YBX sync_url, clippings_enabled), and revoke.
   Useful only if the firmware's KOSync syncs quotes.
@@ -476,6 +478,14 @@ Compared against ybx-plugin 1.6.15 (device.json + the web page plugin.js).
   report 1.6.16. Behaviour is unchanged; the quote-key handling already accepts
   both trusted clippings bases (main and the EU mirror).
 
+1.6.17 release of the after-1.6.16 work; version aligned with the plugin:
+- The version follows the CrossPoint plugin 1.6.17: the About screen and the
+  v= parameter on every request, including the stock lock-screen refresh, now
+  report 1.6.17.
+- This package is the first release containing the changes listed below under
+  "after 1.6.16": hold to delete, "<Author> - <Title>.epub" book file names,
+  the update channel and the Portuguese mirror.
+
 Hold to delete (after 1.6.16):
 - Holding Delete on the keyboard keeps deleting: one letter on touch, then
   after 450 ms one every 120 ms until the finger lifts or slides off the key.
@@ -518,3 +528,25 @@ Update channel (after 1.6.16):
 - Publishing: python scripts/publish_xtapp.py --notes "..." builds, writes
   static/xtapp/latest.json plus the package into the site and creates the
   GitHub release v<version>. Rollout to devices is the site only.
+
+Portuguese mirror (after 1.6.16):
+- Second mirror: https://pmy.ybx.app (cabinet and API), http://psync.ybx.app (the
+  plain-HTTP KOSync address) and popds.ybx.app for the catalogue. Help &
+  diagnostics -> Server cycles Auto / Main / Europe / Portugal. The stored value
+  is "auto", "main", "eu" or "pt"; anything else, including an older save, still
+  reads as Auto.
+- Auto walks main -> Europe -> Portugal: a request whose host could not be
+  reached moves on to the next one, each host at most once per request, and never
+  after an HTTP answer, whatever the status. A mirror that answered stays
+  preferred for 5 minutes, then main is tried again. Main, Europe and Portugal
+  each use exactly one host, and the tests check that a fixed choice never puts
+  an API call on another mirror.
+- With Portugal chosen, the KOSync screen shows http://psync.ybx.app next to the
+  https://pmy.ybx.app base, and the addresses handed to the firmware (sleep card,
+  sync before sleep, stock lock-screen refresh) are the Portuguese ones too.
+  src/lockscreen.lua accepts https://pmy.ybx.app next to my and emy and still
+  falls back to main for an unknown host or a plain-HTTP saved value.
+- Quotes (clippings) key: the Portuguese base is accepted next to the main and EU
+  ones, because the server hands back the base of whichever host served the
+  request and all three share one clipping store. Any other host, scheme or path
+  is refused.

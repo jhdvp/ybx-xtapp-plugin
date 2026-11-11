@@ -18,7 +18,7 @@ local function refresh_once(ctx)
     if type(text)~='string' or #text==0 or #text>8192 then return end
     local config=ctx.json:decode(text)
     if type(config)~='table' or type(config.token)~='string' or #config.token==0 or #config.token>4096 then return end
-    local host=(config.host=='https://emy.ybx.app') and config.host or 'https://my.ybx.app'
+    local host=(config.host=='https://emy.ybx.app' or config.host=='https://pmy.ybx.app') and config.host or 'https://my.ybx.app'
     return text,config.token,host
   end)
   if not ok or not token then return end
@@ -30,7 +30,7 @@ local function refresh_once(ctx)
     pending=false;cancel_request();data=''
   end
   local started,handle=pcall(function()
-    return ctx.net:request({url=host..'/api/v1/crosspoint/sleep-image?w=480&h=800&v=1.6.16',
+    return ctx.net:request({url=host..'/api/v1/crosspoint/sleep-image?w=480&h=800&v=1.6.17',
       method='GET',headers={Authorization='Bearer '..token},timeout_ms=15000,
       on_data=function(_,chunk)
         if current~=generation or not pending then return end

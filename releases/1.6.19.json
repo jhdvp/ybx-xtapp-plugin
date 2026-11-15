@@ -1,0 +1,18 @@
+{
+  "version": "1.6.19",
+  "origin": "Official XTApp Studio export, reviewed 2026-11-15",
+  "package_sha256": "94465a39c574ad86f096922c254e98e663ce3217530c76b1d81540e32d989b2a",
+  "files": {
+    "app/reading.lua": "97c9ea2fa86a0c358e4227e4c36e930c2755a4ef247c4692220c0bffd5d2677e",
+    "app/sleep_card.lua": "cb9eeee0bcacaa8e0876115ee3b402c61db1d663f591874b509b4c1415150ec2",
+    "app/sync.lua": "58103016d219c1a7e5051b19b6596ca46cb3d45ab9783145a24dd65f2275d104",
+    "assets/ybx_brand_32.png": "05a8e1ca70f69dae86473a7996b6fe81468f7d4840034eebd03f08beea76c635",
+    "assets/ybx_brand_88.png": "19115adefd66d96f6fee9b0ac402a19a3e571e4ebef95723d99b10a986650a29",
+    "assets/ybx_brand_large.png": "486fe70c40ba88ce6dfc437f18d78ad50373dc2d5383c23e27a316819c87bbbe",
+    "assets/ybx_icon_s.xic": "131e6a50d3aef9c4e0a27502339f8920155e52ac9ff52cdac830018b3740dc81",
+    "assets/ybx_shelf.xic": "2f20a97ddfe8eada17e9aa2dcd28630ad52722f53964d6db4f7812ef7e9f4621",
+    "index.lua": "78580ca7e58e7ecdeb721fe6c5d5060c7360aa2afd0c6a56ca4f1e14b2de69eb",
+    "lockscreen.lua": "c4836d8887abaa739045f1431656377e2c046d45fe853cc546743237095db14b",
+    "manifest.json": "838057aff5260132a9645ea5035be3209813f6f270a5f1f910f58e58f52efe61"
+  }
+}

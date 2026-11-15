@@ -1,0 +1,31 @@
+{
+  "app_id": "ybx",
+  "display_name": "YBX",
+  "display_names": {
+    "en": "YBX",
+    "ru": "YBX",
+    "zh": "YBX 书库"
+  },
+  "version": "1.6.19",
+  "author": "Community port",
+  "description": "Browse your YBX library, download EPUB books and view cloud reading statistics.",
+  "entry": "index.lua",
+  "api": "2.26",
+  "display": {
+    "orientation": "portrait"
+  },
+  "app_icon_s": "ybx_brand_88",
+  "app_icon_l": "ybx_brand_large",
+  "preload_assets": [
+    "ybx_brand_32",
+    "ybx_brand_88"
+  ],
+  "permissions": [
+    "net",
+    "reader"
+  ],
+  "lockscreen": {
+    "entry": "lockscreen.lua",
+    "interval_sec": 60
+  }
+}

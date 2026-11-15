@@ -18,7 +18,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "source" / "ybx"
+DEFAULT_SOURCE = ROOT / "source" / "ybx-studio"
 
 MAGIC = b"XTAP"
 HEADER_SIZE = 0x80
@@ -97,9 +97,15 @@ def validate_source(source: Path, errors: list[str]) -> tuple[dict, bytes]:
     return manifest, sleep_card
 
 
-def find_package(errors: list[str]) -> Path | None:
+def find_package(errors: list[str], version: str | None = None) -> Path | None:
     directory = ROOT / "package"
     if not directory.is_dir():
+        return None
+    if version:
+        expected = directory / f"YBX-{version}.xtapp"
+        if expected.is_file():
+            return expected
+        errors.append(f"package not found: {expected}")
         return None
     items = sorted(directory.glob("*.xtapp"))
     if len(items) == 1:
@@ -170,10 +176,25 @@ def validate_package(package: Path, manifest: dict, index: bytes, sleep_card: by
 
 def validate(source: Path = DEFAULT_SOURCE, package: Path | None = None) -> list[str]:
     errors: list[str] = []
+    if (source / 'app' / 'sync.lua').is_file():
+        from validate_studio_release import validate as validate_studio
+        try:
+            manifest = json.loads((source / 'manifest.json').read_text())
+            version = manifest['version']
+            index = (source / 'index.lua').read_bytes()
+            found = VERSION_LUA.search(index)
+            if not SEMVER.fullmatch(version) or not found or found.group(1).decode() != version:
+                return ['source VERSION and manifest.version must agree']
+            chosen = package or find_package(errors, version)
+            if chosen is None:
+                return errors or ['Studio package required']
+            return errors + validate_studio(source, Path(chosen))
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return [str(exc)]
     manifest, sleep_card = validate_source(source, errors)
     if errors:
         return errors
-    package = package or find_package(errors)
+    package = package or find_package(errors, manifest.get("version"))
     if package is not None:
         if not Path(package).is_file():
             errors.append(f"package not found: {package}")

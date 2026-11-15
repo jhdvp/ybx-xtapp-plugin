@@ -36,35 +36,48 @@
   того хоста, через который пришёл запрос, поэтому обход работает и для цитат.
   Любой другой хост, схема или путь отклоняются.
 
+## Актуальный выпуск Studio
+
+**1.6.19**, X4 Classic и X4 Pro, совместимая прошивка Gancao с XTApp API 2.26.
+[Карточка магазина](https://xtapp-ai.xteink.cc/store?view=browse&app=u_c410dcba5c524789a6586fa34d935bcf).
+Исходники опубликованного приложения: `source/ybx-studio`; официальный экспорт:
+`package/YBX-1.6.19.xtapp`. Каталог `source/ybx` и community-packer относятся
+к исторической 1.6.17 и не используются для нового выпуска.
+
 ## Установка
 
-1. Скопируйте `package/YBX-1.6.17.xtapp` в корень SD-карты.
-2. Установите через **All Files** на устройстве.
-3. Откройте приложение из ящика **Ink App**.
+Установите приложение из магазина XTApp либо скопируйте официальный пакет
+`package/YBX-1.6.19.xtapp` на карту и откройте его на совместимом устройстве.
 
-## Сборка
+## Экспорт и обновления
 
-Пакет собирается из `source/ybx` в два шага: подготовка каталога сборки и
-упаковка внешним пиннутым пакером (MIT, см. `source/ybx/README.txt`).
+Пакет экспортируется официальным Studio. Старый community-packer использует
+другую схему упаковки/шифрования и не воспроизводит этот экспорт.
 
 ```bash
-python scripts/build_ybx_stock_source.py /path/to/staged-ybx
-python touch-licorice-apps/xtpack.py /path/to/staged-ybx -o package/YBX-1.6.17.xtapp
+python3 tools/validate_source.py
+python3 scripts/publish_xtapp.py --dry-run --no-release --notes "Что изменилось"
+python3 scripts/publish_xtapp.py --no-release --site /path/to/site-checkout --notes "Что изменилось"
 ```
 
-`build_ybx_stock_source.py` копирует runtime, проверяет, что встроенный в
-`index.lua` модуль экрана сна совпадает с `src/sleep_card.lua`, собирает
-`lockscreen.lua` для стоковой блокировки и добавляет блок `lockscreen` в
-манифест.
+По умолчанию используется `source/ybx-studio` и пакет с совпадающей версией.
+Другие версии в `package/` не мешают проверке. До записи в каталог сайта
+проверяются исходники, manifest, структура контейнера и SHA-256 по
+`releases/1.6.19.json`. Это локальная запись проверенной пары исходники/экспорт,
+а не криптографическое доказательство расшифровки кода. При изменении runtime
+нужны новый экспорт Studio и проверенная запись нового выпуска; нельзя просто
+переписывать SHA старого пакета для обхода проверки.
 
-## Обновления
+`--dry-run` не создаёт и не изменяет пакет или каталог сайта. `--no-release`
+не создаёт GitHub-релиз. Без этого флага создаётся GitHub-релиз-архив.
+Скрипт не деплоит сайт. Историческая команда `build_ybx_stock_source.py`
+сохранена только для старой 1.6.17.
 
-`python scripts/publish_xtapp.py --notes "Что изменилось"` собирает пакет,
-кладёт его и `latest.json` в `YBX Site/.../static/xtapp/`, проверяет
-`tools/validate_source.py` и создаёт GitHub-релиз `v<version>`. На устройства
-обновление приходит только с сервера YBX; GitHub-релиз — архив и публичный
-артефакт. `--site PATH` выбирает рабочую копию сайта, `--no-release` пропускает
-GitHub, `--dry-run` только печатает манифест.
+## Учёт чтения
+
+XTApp передаёт позицию через KOSync, а сервер оценивает минуты. Клиент не
+создаёт таймер и не отправляет `read_sec` как измеренные сессии. См.
+[схему учёта](READING-TIME.md) и [передачу выпуска Installer](RELEASE-HANDOFF.md).
 
 ## Тесты и проверка
 
@@ -74,7 +87,9 @@ GitHub, `--dry-run` только печатает манифест.
 ```bash
 npm install --prefix tests
 npm test --prefix tests          # tests/run-tests.js
-python tools/validate_source.py  # манифест, дрейф sleep-card, версия и .xtapp
+node tests/run-studio-tests.js
+python3 -m unittest discover -s tests -p test_release_pipeline.py
+python tools/validate_source.py  # официальный экспорт Studio и запись выпуска
 ```
 
 `validate_source.py` проверяет исходники и заголовок пакета: манифест,

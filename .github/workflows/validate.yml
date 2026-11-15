@@ -17,3 +17,5 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund --prefix tests
       - run: npm test --prefix tests
+      - run: node tests/run-studio-tests.js
+      - run: python3 -m unittest discover -s tests -p "test_release_pipeline.py"

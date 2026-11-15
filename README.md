@@ -1,12 +1,6 @@
 # YBX XTApp
 
-Отдельный клиент YBX для **стоковой прошивки Xteink X4 Pro (Licorice, host API 2.18)**
-и сборки CrossPoint 2.0 XTApp. Это самостоятельный пакет `.xtapp` на Lua, а не
-порт веб-панели: у приложения собственный интерфейс, а каталог, поиск, загрузки,
-статистика, экран сна и настройка KOSync работают через публичный API YBX.
-
-> **Это не YBX Native.** Кастомная YBX Reader развивается отдельно и не
-> устанавливается на стоковую прошивку. Здесь — только стоковое издание.
+Клиент YBX для Xteink X4 Classic и X4 Pro с совместимой прошивкой Gancao, XTApp API 2.26. Историческая версия 1.6.17 для Licorice сохранена отдельно.
 
 ## Возможности
 
@@ -38,16 +32,16 @@
 
 ## Актуальный выпуск Studio
 
-**1.6.19**, X4 Classic и X4 Pro, совместимая прошивка Gancao с XTApp API 2.26.
+**1.7.0**, X4 Classic и X4 Pro, совместимая прошивка Gancao с XTApp API 2.26.
 [Карточка магазина](https://xtapp-ai.xteink.cc/store?view=browse&app=u_c410dcba5c524789a6586fa34d935bcf).
 Исходники опубликованного приложения: `source/ybx-studio`; официальный экспорт:
-`package/YBX-1.6.19.xtapp`. Каталог `source/ybx` и community-packer относятся
+`package/YBX-1.7.0.xtapp`. Каталог `source/ybx` и community-packer относятся
 к исторической 1.6.17 и не используются для нового выпуска.
 
 ## Установка
 
 Установите приложение из магазина XTApp либо скопируйте официальный пакет
-`package/YBX-1.6.19.xtapp` на карту и откройте его на совместимом устройстве.
+`package/YBX-1.7.0.xtapp` на карту и откройте его на совместимом устройстве.
 
 ## Экспорт и обновления
 
@@ -63,7 +57,7 @@ python3 scripts/publish_xtapp.py --no-release --site /path/to/site-checkout --no
 По умолчанию используется `source/ybx-studio` и пакет с совпадающей версией.
 Другие версии в `package/` не мешают проверке. До записи в каталог сайта
 проверяются исходники, manifest, структура контейнера и SHA-256 по
-`releases/1.6.19.json`. Это локальная запись проверенной пары исходники/экспорт,
+`releases/1.7.0.json`. Это локальная запись проверенной пары исходники/экспорт,
 а не криптографическое доказательство расшифровки кода. При изменении runtime
 нужны новый экспорт Studio и проверенная запись нового выпуска; нельзя просто
 переписывать SHA старого пакета для обхода проверки.
@@ -76,7 +70,7 @@ python3 scripts/publish_xtapp.py --no-release --site /path/to/site-checkout --no
 ## Учёт чтения
 
 XTApp передаёт позицию через KOSync, а сервер оценивает минуты. Клиент не
-создаёт таймер и не отправляет `read_sec` как измеренные сессии. См.
+создаёт таймер. Снимки `read_sec` передаются отдельно для сравнения, без начисления минут. См.
 [схему учёта](READING-TIME.md) и [передачу выпуска Installer](RELEASE-HANDOFF.md).
 
 ## Тесты и проверка
@@ -115,51 +109,12 @@ python tools/validate_source.py  # официальный экспорт Studio 
 
 ## Структура проекта
 
-```
-ybx-xtapp-plugin/
-├── source/ybx/                     # runtime: единственный источник пакета
-│   ├── manifest.json               # app_id=ybx, version, entry, api=2.18, permissions=[net]
-│   ├── index.lua                   # приложение: UI, сеть, загрузки, статистика, KOSync, цитаты
-│   ├── icon.png                    # иконка 180×180, 1 bpp (секция иконок пакета)
-│   ├── src/
-│   │   ├── sleep_card.lua          # общий модуль карточки экрана сна
-│   │   └── lockscreen.lua          # точка входа стоковой блокировки
-│   └── README.txt                  # дизайн, совместимость и полный changelog
-├── scripts/
-│   └── build_ybx_stock_source.py   # staging: копирует runtime, сверяет sleep-card, собирает lockscreen.lua
-├── tools/
-│   └── validate_source.py          # проверка манифеста, дрейфа sleep-card и соответствия .xtapp
-├── tests/
-│   ├── YbxAppTest.lua              # Lua-тесты на моках хоста
-│   ├── run-tests.js                # запуск тестов на wasmoon (Lua 5.4)
-│   └── package.json                # зависимость wasmoon и `npm test`
-├── package/
-│   └── YBX-1.6.17.xtapp            # собранный пакет для SD-карты
-├── .github/workflows/
-│   └── validate.yml                # CI: validate_source.py + npm test
-├── .gitignore
-└── README.md
-```
-
-Как связаны части:
-
-- `source/ybx/` — единственный runtime. В `index.lua` модуль `src/sleep_card.lua`
-  встроен между маркерами `-- BEGIN/END SHARED SLEEP CARD`.
-  `build_ybx_stock_source.py` проверяет, что встроенный блок не разошёлся с
-  `src/sleep_card.lua`, и собирает `lockscreen.lua` = локальная обёртка модуля
-  плюс `src/lockscreen.lua`.
-- `tools/validate_source.py` сверяет исходники с заголовком `package/*.xtapp`
-  (версия и манифест, точная длина зашифрованной code-секции), поэтому пакет,
-  собранный из старых исходников, виден сразу.
-- `tests/` исполняют `index.lua` в wasmoon на моках `ctx`; путь к `index.lua`
-  подставляет `run-tests.js`, нативный Lua не нужен.
-
-В сам `.xtapp` попадают только `manifest.json`, `index.lua`, сгенерированный
-`lockscreen.lua` и `icon.png`. `README.txt`, `src/`, `tests/`, `tools/` и
-`scripts/` остаются в репозитории и в пакет не входят.
-
-Версия приложения следует версии плагина CrossPoint, который оно повторяет:
-**1.6.17**.
+- `source/ybx-studio/` — runtime 1.7.0, manifest, модули app и фирменные assets.
+- `source/ybx/` — исторический клиент Licorice 1.6.17.
+- `releases/1.7.0.json` — сверка исходников и официального экспорта.
+- `package/YBX-1.7.0.xtapp` — официальный пакет Studio.
+- `scripts/publish_xtapp.py` — проверка и подготовка отдельного каталога Gancao.
+- `tests/` — Lua runtime, OTA, очередь диагностики и публикационный pipeline.
 
 ## Лицензия
 

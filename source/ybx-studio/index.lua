@@ -1,3 +1,5 @@
+local Diagnostics=require('app.diagnostics')
+local Updater=require('app.updater')
 local Reading=require('app.reading')
 local Sync=require('app.sync')
 -- BEGIN SHARED SLEEP CARD
@@ -88,7 +90,7 @@ end)()
 -- each use exactly one host.
 local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app',pt='https://pmy.ybx.app'}
 local API_PATH='/api/v1/crosspoint'
-local VERSION = '1.6.19'
+local VERSION = '1.7.0'
 local APP_VERSION = VERSION -- the app follows the CrossPoint plugin version
 local c, message, buttons, busy = nil, '', {}, false
 
@@ -194,7 +196,7 @@ local STR={
  settings_kb_kk={'Kazakh layout','Казахская раскладка','Қазақша пернетақта'},
  settings_kb_kk_sub={'Adds the Kazakh letters to the on-screen keyboard','Добавляет казахские буквы в экранную клавиатуру','Пернетақтаға қазақ әріптері қосылады'},
  settings_reader_cp={'Firmware: CrossPoint','Прошивка: CrossPoint','Микробағдарлама: CrossPoint'},
- settings_reader_stock={'Firmware: Licorice','Прошивка: Licorice','Микробағдарлама: Licorice'},
+ settings_reader_stock={'XTApp API 2.26','XTApp API 2.26','XTApp API 2.26'},
  -- account
  account_not_connected={'Not connected','Не подключено','Қосылмаған'},
  account_connected={'Connected to YBX','Подключено к YBX','YBX-ке қосылған'},
@@ -279,11 +281,13 @@ sync_unmapped={'YBX does not know this book (unmapped), so the report was droppe
 sync_no_key={'No KOSync key yet. It is issued automatically on the next sync.','Ключ KOSync ещё не получен. Он выдаётся автоматически при следующей синхронизации.','KOSync кілті әзірге жоқ. Ол келесі синхрондау кезінде автоматты түрде беріледі.'},
 sync_rate_limited={'YBX asked to slow down. The report stays queued.','YBX просит снизить частоту. Отчёт останется в очереди.','YBX жиілікті азайтуды сұрайды. Есеп кезекте қалады.'},
 hash_check={'EPUB fingerprint: ','Хеш EPUB: ','EPUB хеші: '},
+diagnostics_title={'Compare reading seconds','Сравнивать секунды чтения','Оқу секундтарын салыстыру'},
+diagnostics_hint={'Does not add reading time','На статистику не влияет','Минуттарды қоспайды'},
 sync_no_reader_match={'No recent reading data matches a YBX download yet. Open a downloaded book in the system reader first.','В недавнем чтении пока нет данных для книг, скачанных через YBX. Сначала откройте скачанную книгу в системной читалке.','Соңғы оқу деректерінде YBX арқылы жүктелген кітап жоқ. Алдымен жүктелген кітапты жүйелік оқу құрылғысында ашыңыз.'},
 sync_no_document={'The downloaded file could not be identified for YBX.','Не удалось опознать скачанный файл для YBX.','Жүктелген файлды YBX үшін тану мүмкін болмады.'},
 sync_no_reading={'Nothing has been read on this device yet.','На этом устройстве ещё ничего не прочитано.','Бұл құрылғыда әзірге ештеңе оқылмаған.'},
 sync_no_match={'Books were read, but none of them is from YBX, so there is nothing to send.','Чтение есть, но ни одна книга не из YBX — отправлять нечего.','Оқу бар, бірақ ешқайсысы YBX кітабы емес — жіберетін ештеңе жоқ.'},
-sync_reader_body={'Sends the position of YBX downloads from the system reader. Reading time is shown locally and is not uploaded.','Отправляет позицию книг, скачанных через YBX, из системной читалки. Время показано локально и не отправляется.','YBX арқылы жүктелген кітаптардың оқу орнын жібереді. Оқу уақыты жергілікті көрсетіледі, серверге жіберілмейді.'},
+sync_reader_body={'Sends YBX book positions. The server estimates minutes; device seconds are separate comparison diagnostics.','Отправляет позицию книг YBX. Минуты считает сервер; секунды устройства — отдельная диагностика для сравнения.','YBX кітаптарының оқу орнын жібереді. Минуттарды сервер есептейді; құрылғы секундтары салыстыруға арналған.'},
 sync_reader_none={'No reading recorded yet. Open a downloaded book and read a little.','Пока ничего не прочитано. Откройте скачанную книгу и почитайте немного.','Әзірге ештеңе оқылмады. Жүктелген кітапты ашып, сәл оқыңыз.'},
 sync_reader_days={'Read %s','Прочитано %s','Оқылды %s'},
 sync_reader_streak={'Streak: %s d','Серия: %s дн.','Серия: %s күн'},
@@ -779,6 +783,7 @@ local function save_token(value)
       if not ok or not cleared then say('account_kept');return false end
     end
     events={};c.state.event_owner=event_id()
+    F.diagnostics_cancel();ui.diagnostics_collect=true
     c.state.kosync_key=nil;c.state.sync_status=nil;c.state.links=nil;c.state.doc_hashes=nil
   end
   ui.credentials=nil;ui.reveal=false;ui.data={};ui.loaded=false;ui.library_cache=nil;ui.auto_library=false;items={}
@@ -947,6 +952,38 @@ local function remember_reader_book(file,id)
   books[file]=id
   local encoded=c.json:encode({owner=c.state.event_owner,books=books})
   return #encoded<=32768 and c.storage:write('reader-books.json',encoded)
+end
+-- Diagnostic counter traffic is separate from position and minute accounting.
+function F.diagnostics_cancel()
+  if ui.diagnostics_handle then pcall(function()ui.diagnostics_handle:cancel()end)end
+  ui.diagnostics_handle=nil;ui.diagnostics_generation=(ui.diagnostics_generation or 0)+1
+end
+function F.diagnostics_tick()
+  if token=='' or busy or bg.handle or not Diagnostics.enabled(c) then return end
+  if ui.diagnostics_collect then Diagnostics.collect(c);ui.diagnostics_collect=false end
+  if ui.diagnostics_handle or now()<(ui.diagnostics_next or 0) then return end
+  local samples=Diagnostics.batch(c)
+  if #samples==0 then return end
+  local owner,auth=c.state.event_owner,token
+  local generation=ui.diagnostics_generation or 0
+  local payload={version=VERSION,model='unknown',samples=samples}
+  ui.diagnostics_next=now()+60000
+  local complete=false
+  local ok,handle=pcall(function()
+    return c.net:request({url=api_host()..API_PATH..'/reading/diagnostics',method='POST',
+      headers={Authorization='Bearer '..auth,['Content-Type']='application/json'},body=c.json:encode(payload),timeout_ms=20000},function(_,resp)
+      complete=true
+      if generation~=(ui.diagnostics_generation or 0) or owner~=c.state.event_owner or auth~=token then return end
+      ui.diagnostics_handle=nil
+      if type(resp)=='table' and resp.status==200 then
+        local decoded,value=pcall(function()return c.json:decode(resp.body)end)
+        if decoded and type(value)=='table' and Diagnostics.ack(c,value) then ui.diagnostics_failures=0;ui.diagnostics_next=now()+1000;return end
+      end
+      ui.diagnostics_failures=math.min(6,(ui.diagnostics_failures or 0)+1)
+      ui.diagnostics_next=now()+math.min(3600000,60000*2^ui.diagnostics_failures)
+    end)
+  end)
+  if ok and not complete then ui.diagnostics_handle=handle end
 end
 -- Minutes in the reader's language: '%d min', '%d мин', '%d мин'.
 local function dur(seconds)
@@ -1227,6 +1264,7 @@ local function open_book()
   -- Bind this file to its YBX id now, while the id is known: the server matches
   -- books by a binary key, so the reader's own id cannot be reported to it.
   Sync.link_launch(c,file,{id=selected.id,title=selected.title,author=selected.author})
+  if c.state.doc_hashes then c.state.doc_hashes[file]=nil end
   local document, hash_reason=Sync.document_for(c,{file=file})
   c.state.last_hash_ok=document~=nil
   c:save_state()
@@ -1615,6 +1653,8 @@ local function delete_book()
   for i,book in ipairs(c.state.downloads or {}) do
     if book.file==file then table.remove(c.state.downloads,i);break end
   end
+  if c.state.links then c.state.links[file]=nil end
+  if c.state.doc_hashes then c.state.doc_hashes[file]=nil end
   c:save_state();say('removed')
 end
 local function selftest()
@@ -1813,16 +1853,7 @@ function F.update_newer(current,candidate)
   if cn~=bn then return cn>bn end
   return cp>bp
 end
-function F.update_manifest(doc)
-  if type(doc)~='table' or doc.app~='ybx-xtapp' then return nil end
-  local v=doc.version
-  if type(v)~='string' or not v:match('^%d+%.%d+%.%d+$') or not F.update_newer(VERSION,v) then return nil end
-  if doc.url~='/xtapp/YBX-'..v..'.xtapp' then return nil end
-  local size=tonumber(doc.size)
-  if not size or size%1~=0 or size<1 or size>2097152 then return nil end
-  if type(doc.sha256)~='string' or not doc.sha256:match('^[0-9a-f]+$') or #doc.sha256~=64 then return nil end
-  return {version=v,url=doc.url,size=size,notes=type(doc.notes)=='string' and doc.notes or ''}
-end
+function F.update_manifest(doc) return Updater.manifest(VERSION,doc) end
 -- Raw host request outside /api/v1 (the update catalog lives at /xtapp/).
 function F.update_fetch(path,on_data,done)
   local base=api_host()
@@ -1865,7 +1896,7 @@ function F.update_check(manual)
   if ui.update_check_at and now()-ui.update_check_at<30000 then return end
   ui.update_check_at=now()
   if manual then say('update_checking') end
-  F.update_fetch('/xtapp/latest.json?v='..VERSION,nil,function(resp,status)
+  F.update_fetch('/xtapp/gancao/latest.json?v='..VERSION,nil,function(resp,status)
     ui.update_check_at=nil
     if status~=200 then if manual then say('update_check_failed') end;return end
     local ok,doc=pcall(function() return c.json:decode(type(resp)=='table' and resp.body or '') end)
@@ -1899,7 +1930,8 @@ function F.update_download(m)
   F.update_fetch(m.url..'?v='..VERSION,function(_,chunk)
     local u=ui.update_downloading
     if not u or u.error or type(chunk)~='string' then return end
-    if u.bytes+#chunk>m.size or u.bytes+#chunk>2097152 then u.error='size';return end
+    if not u.extended then c.budget:extend();u.extended=true end
+    if u.bytes+#chunk>m.size or u.bytes+#chunk>Updater.MAX_BYTES then u.error='size';return end
     for offset=1,#chunk,262144 do
       local piece=(offset==1 and #chunk<=262144) and chunk or chunk:sub(offset,offset+262143)
       local ok,written=pcall(append,storage,name,piece)
@@ -1912,7 +1944,7 @@ function F.update_download(m)
     if not u then return end
     local size=storage:size(name)
     local head=storage:read(name,0,4)
-    if status~=200 or u.error or size~=m.size or head~='XTAP' then
+    if status~=200 or u.error or size~=m.size or head~='XTAP' or not Updater.verify(c,storage,name,m.size,m.sha256) then
       pcall(function() storage:remove(name) end)
       ui.update_downloading=nil
       tick_rate(false);say('update_download_failed')
@@ -2274,6 +2306,8 @@ local function prefetch()
 end
 function on_load(ctx)
   c=ctx
+  F.diagnostics_cancel()
+  ui.diagnostics_collect=true;ui.diagnostics_next=0;ui.diagnostics_failures=0
   message='';auto_reader_sync=false
   lang_at=2 -- Russian until the reader picks another language
   if type(c.state.lang)=='string' then
@@ -2627,13 +2661,14 @@ function on_draw(_,g)
         for i,b in ipairs(books) do local y=372+(i-1)*62;text(g,24,y,fit(b.title,320,'medium'));if b.percent then text(g,360,y,tostring(math.floor(b.percent))..'%') end end
         local pending=Sync.pending(c)
         row(g,590,T('sync_now'),sync_reader_events,'refresh')
-        if pending>0 then paragraph(g,24,660,T('sync_reader_sent',tostring(pending)),432,2) end
+        if pending>0 then text(g,24,656,fit(T('sync_reader_sent',tostring(pending)),432)) end
       else
         paragraph(g,24,138,T('sync_reader_body'),432,3)
         paragraph(g,24,260,T('sync_reader_none'),432,3)
         row(g,450,T('sync_downloads'),sync_events,'refresh')
       end
     end
+    switch(g,680,T('diagnostics_title'),Diagnostics.enabled(c),function() F.diagnostics_cancel();Diagnostics.set_enabled(c,not Diagnostics.enabled(c));c:save_state();ui.diagnostics_collect=true;redraw('') end,T('diagnostics_hint'))
   elseif view=='kosync' then
     header_ui(g,T('settings_kosync'),back);section(g,104,fit(T('kosync_hint'),432,'medium'))
     if not ui.credentials then
@@ -2748,15 +2783,28 @@ function on_input(_,event)
     end
     -- A tap on empty space is still ours to swallow: the app must not read it as "next page".
     return true
-  elseif view=='keyboard' and event.type=='key' and event.phase~='up' then
-    if event.key=='ok' then kb_finish();return true
-    elseif event.key=='back' then kb_close();return true
-    elseif event.key=='up' then kb_backspace();return true end
-  elseif event.type=='key' and event.phase~='up' then
-    if event.key=='up' then ui.focus=true;selected_index=math.max(1,selected_index-1);redraw();return true
-    elseif event.key=='down' then ui.focus=true;selected_index=math.min(#buttons,selected_index+1);redraw();return true
-    elseif event.key=='ok' and buttons[selected_index] then ui.auto_library=false;buttons[selected_index].action();return true
-    elseif event.key=='back' then ui.auto_library=false;if busy then cancel() elseif message~='' then message='';redraw() else back() end;return true end
+  elseif event.type=='key' then
+    local key=event.key
+    local known=key=='up' or key=='down' or key=='left' or key=='right' or key=='ok' or key=='back'
+    if not known then return false end
+    -- The host decides Back on release, and activation belongs to key-up.
+    if event.phase~='up' then return true end
+    if key=='back' then
+      ui.auto_library=false
+      if view=='keyboard' then kb_close()
+      elseif busy then cancel()
+      elseif message~='' then message='';redraw()
+      elseif view=='catalog' or view=='welcome' then return false
+      else back() end
+      return true
+    elseif key=='up' or key=='left' then
+      ui.focus=true;selected_index=math.max(1,selected_index-1);redraw();return true
+    elseif key=='down' or key=='right' then
+      ui.focus=true;selected_index=math.min(#buttons,selected_index+1);redraw();return true
+    elseif key=='ok' and buttons[selected_index] then
+      ui.auto_library=false;buttons[selected_index].action();return true
+    end
+    return true
   end
   return false
 end
@@ -2792,9 +2840,11 @@ function on_tick()
     if download_file then clear_partial();ui.download_error=T('err_download_timeout');view='download_error';redraw('')
     else say('err_timeout') end
   end
+  F.diagnostics_tick()
   prefetch()
 end
 function on_leave()
+  F.diagnostics_cancel()
   kb.hold=nil
   quiet_cancel()
   ui.sleep_runs=nil

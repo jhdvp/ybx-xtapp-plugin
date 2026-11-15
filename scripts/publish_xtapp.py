@@ -50,6 +50,9 @@ def publish(package: Path, version: str, notes: str, release: bool, dry_run: boo
     target = static / f"YBX-{version}.xtapp"
     document = {
         "app": "ybx-xtapp",
+        "channel": "gancao",
+        "min_api": "2.26",
+        "firmware": "Gancao",
         "version": version,
         "url": f"/xtapp/YBX-{version}.xtapp",
         "size": len(payload),
@@ -57,13 +60,16 @@ def publish(package: Path, version: str, notes: str, release: bool, dry_run: boo
         "notes": notes,
         "published": datetime.now(timezone.utc).date().isoformat(),
     }
+    if target.exists() and target.read_bytes()!=payload:
+        raise SystemExit("immutable version URL already contains different bytes; export a new version")
     if dry_run:
         print(json.dumps(document, ensure_ascii=False, indent=2))
         print(f"would write {target}")
         return
     static.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(package, target)
-    (static / "latest.json").write_text(
+    (static / "gancao").mkdir(exist_ok=True)
+    (static / "gancao" / "latest.json").write_text(
         json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(f"published {target} ({len(payload)} bytes)")

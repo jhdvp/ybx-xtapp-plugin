@@ -6,6 +6,12 @@ The server estimates time from positive text movement and reading speed, bounded
 
 The client shows device statistics as local values and cloud statistics as server values; they are not added together. HTTP acceptance of a KOSync report is not proof of delivery to Yandex or of Yandex crediting minutes.
 
-Future measured source: verify read_sec on both Classic and Pro before uploading it. Check per-book accumulation, sleep/idle treatment, restart persistence, clock changes, resets and offline reading. A lifetime per-book counter does not identify exact active intervals or the days they belong to. Never split a large delta into invented sub-minute sessions merely to satisfy reader_sessions validation. Add a distinct server import contract only after these semantics are verified; measured coverage must replace overlapping estimates, not add to them.
+## 1.7.0 comparison diagnostics
 
-Physical-device position upload/restoration remains unverified. No production settings were changed for this decision.
+The client snapshots genuine cumulative per-book `read_sec` with document, observed_at, percent and a stable sample UUID. POST `/api/v1/crosspoint/reading/diagnostics` uses the paired device Bearer token. No book titles, fabricated active intervals or credited minutes are sent. The persistent bounded queue retains IDs across retries, isolates accounts, and can be disabled in Reader settings.
+
+Schema 29 stores diagnostics and receipt-time server estimate checkpoints separately. Idempotent retries cannot add samples; changed payloads under an existing ID conflict. Old observations, counter resets, missing mappings and uncertain batched intervals do not produce a comparison delta. The admin Diagnostics page groups retained samples by version/model without exposing account or device identities. Server estimates cover the account/book across devices, and receipt intervals can differ from offline observation intervals; these are comparison data, not measured active reading or totals to add to statistics.
+
+Reading-history deletion removes both diagnostic tables for the account. Runtime PostgreSQL never creates schema; migrate 28 to 29 through the owner rollout script before shipping the client.
+
+Physical-device position delivery/restoration, OTA installation and counter sleep/restart semantics remain unverified. Classic keys and Pro touch were checked in the official Studio simulator. Any later use of counters for accounting needs physical-device evidence and overlap replacement rules.

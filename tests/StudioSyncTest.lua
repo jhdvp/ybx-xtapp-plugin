@@ -48,3 +48,9 @@ for key in pairs(wire)do assert(expected_fields[key],'position wire must not upl
 for key in pairs(expected_fields)do assert(wire[key]~=nil)end
 assert(wire.progress=='37.25' and wire.percentage==0.3725)
 print('PASS: position-only wire contract; no client minutes or fabricated reading intervals')
+ctx.state.downloads={{file='book.epub'}}
+ctx.state.links={['book.epub']={title='A book',author='An author'},['deleted.epub']={title='A book',author='An author'}}
+assert(Sync.document_for_reader_book(ctx,{title='A book',author=''})~=nil,'unknown empty author and deleted-edition link must not block a unique match')
+ctx.state.downloads[#ctx.state.downloads+1]={file='deleted.epub'}
+assert(Sync.document_for_reader_book(ctx,{title='A book',author=''})==nil,'two live editions remain ambiguous')
+print('PASS: unknown authors and obsolete download links do not poison document matching')

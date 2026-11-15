@@ -1,16 +1,15 @@
-# Installer handoff — official Studio 1.6.19
+# Release 1.7.0
 
-- Source: source/ybx-studio; legacy source/ybx remains historical 1.6.17.
-- Package: package/YBX-1.6.19.xtapp, 235572 bytes.
-- SHA-256: 94465a39c574ad86f096922c254e98e663ce3217530c76b1d81540e32d989b2a.
-- Store app: u_c410dcba5c524789a6586fa34d935bcf.
-- Store project: 784cb883-9704-4bc7-bbf5-812129d5a80b.
-- Devices: X4 Classic / X4 Pro. Requires compatible Gancao firmware, API 2.26.
+Source: `source/ybx-studio`; official Studio project `784cb883-9704-4bc7-bbf5-812129d5a80b`.
+Package: `package/YBX-1.7.0.xtapp`, 245112 bytes.
+SHA-256: `2bfe0a24fa2e0ee51290812daa0673d648fa8a250683171b78ff70ffdeada2b3`.
+Store app: `u_c410dcba5c524789a6586fa34d935bcf`.
+Compatibility: Classic and Pro, Gancao API 2.26.
 
-The publisher consumes the official export and validates it BEFORE writing anything. Do not rebuild it with the legacy Licorice community packer. Do not delete or reset another agent's modified 1.6.17 package; versioned selection makes old packages harmless.
+The official export is checked against `releases/1.7.0.json`. Never rebuild with the old community packer. The publisher refuses different bytes at an existing version URL and writes `static/xtapp/gancao/latest.json`; the legacy Licorice catalog remains separate. Clients 1.6.19 and newer receive the Gancao catalog through the compatibility endpoint; older clients retain their original catalog.
 
-First run `python3 tools/validate_source.py`, `node tests/run-studio-tests.js`, and `python3 -m unittest discover -s tests -p test_release_pipeline.py`. Then run `python3 scripts/publish_xtapp.py --dry-run --no-release`.
+OTA validates app, firmware channel, minimum API, version, same-origin versioned URL, bounded size, XTAP magic and the SHA-256 of the saved file before offering installation.
 
-To prepare an isolated site checkout: `python3 scripts/publish_xtapp.py --no-release --site /absolute/path/to/site-checkout --notes "Official Studio 1.6.19: YBX identity and KOSync fixes"`. The resulting latest.json uses app=ybx-xtapp and /xtapp/YBX-1.6.19.xtapp. The site agent must update Installer links/compatibility so this Gancao package is not advertised as a generic old Licorice update. Existing older firmware paths need to stay available where appropriate. Review and deploy the site through its own repository gate.
+Deploy site schema 29 and the matching server before submitting the client. Run the full backend PostgreSQL gate, frontend tests and reproducible asset build, then use `scripts/upgrade_schema.sh 28 29` from a clean committed checkout. Preserve unrelated modified 1.6.17 files.
 
-This work fixes local release preparation only. It does not deploy the website, alter stable or create a GitHub release. Physical-device progress delivery/restoration remains a separate check. Minutes stay server-estimated; no device timer was introduced.
+Seconds are shadow diagnostics only; credited minutes remain server-owned. Physical-device checks remain outstanding as documented in READING-TIME.md.

@@ -278,15 +278,22 @@ function M.document_for_reader_book(ctx, book)
   local title = type(book.title) == 'string' and book.title:lower():match('^%s*(.-)%s*$') or nil
   local author = type(book.author) == 'string' and book.author:lower():match('^%s*(.-)%s*$') or nil
   if not title or title == '' then return nil end
+  if author=='' then author=nil end
+  local present={}
+  for _,download in ipairs(state.downloads or {}) do if type(download)=='table' and type(download.file)=='string' then present[download.file]=true end end
+  local matched
   for file, record in pairs(links) do
-    if type(record) == 'table' and type(record.title) == 'string' then
+    if present[file] and type(record) == 'table' and type(record.title) == 'string' then
       local linked_title = record.title:lower():match('^%s*(.-)%s*$')
       local linked_author = type(record.author) == 'string' and record.author:lower():match('^%s*(.-)%s*$') or nil
+      if linked_author=='' then linked_author=nil end
       if linked_title == title and (not author or not linked_author or linked_author == author) then
-        return M.document_for(ctx, { file = file })
+        if matched then return nil end -- ambiguous editions must not share counters
+        matched=file
       end
     end
   end
+  if matched then return M.document_for(ctx,{file=matched}) end
   return nil
 end
 

@@ -14,8 +14,10 @@
 Official source `source/ybx-studio`; package `package/YBX-1.7.0.xtapp`, **245112 bytes**.
 SHA-256: `2bfe0a24fa2e0ee51290812daa0673d648fa8a250683171b78ff70ffdeada2b3`.
 
-The XTApp store approved and listed **1.7.0**, with Classic and Pro support, Gancao API 2.26. Project `784cb883-9704-4bc7-bbf5-812129d5a80b`, app `u_c410dcba5c524789a6586fa34d935bcf`. GitHub release `https://github.com/jhdvp/ybx-xtapp-plugin/releases/tag/v1.7.0` is public. Installer and Gancao OTA serve the exact validated export. Historical Licorice 1.6.17 remains separate; unrelated local modifications to that immutable old package/catalog were not shipped.
+The XTApp store approved and listed **1.7.0**, with Classic and Pro support, Gancao API 2.26. Project `784cb883-9704-4bc7-bbf5-812129d5a80b`, app `u_c410dcba5c524789a6586fa34d935bcf`. GitHub release `https://github.com/jhdvp/ybx-xtapp-plugin/releases/tag/v1.7.0` is public. Installer and Gancao OTA serve the exact validated export. The historical 1.6.17 update catalog remains separate; unrelated local modifications to that immutable old package/catalog were not shipped.
 
 Device seconds remain comparison diagnostics only; credited reading minutes remain server-owned. Physical XTApp OTA installation, position delivery/restoration and counter sleep/restart semantics remain unverified and were disclosed to store reviewers.
 
 Proof and full public-download receipt: `publication/2026-11-16/xtapp-1.7.0-published.jpg` and `publication/2026-11-16/combined-release-receipt.json`. The rollout is complete; do not restart a preflight or publish the old incorrectly labeled Android-modern staging pair.
+
+Naming: Gancao (甘草) and Licorice name the same official firmware family, not distinct regional versions. CN/EN are regional variants. Installer copy must describe the required API and historical app version without presenting those names as incompatible systems.

@@ -1,27 +1,21 @@
-# Release 1.7.0
+# Published combined release — 2026-11-16
 
-Source: `source/ybx-studio`; official Studio project `784cb883-9704-4bc7-bbf5-812129d5a80b`.
-Package: `package/YBX-1.7.0.xtapp`, 245112 bytes.
+- Production server/Installer: main commit `046df658872b870411d00a609e495fb8867f653d`, PostgreSQL schema 29; service active, smoke passed.
+- Verified backup: `/var/backups/ybx/v28-before-v29-20261116T092940Z-046df65`.
+- Client source: `ybx-apps/main` at `7f1a0bd`, reviewed and host gate passed. Existing dirty Android documentation preserved.
+- Public beta and stable releases: PocketBook a13 fat **0.5.7**, PocketBook legacy4 **0.5.6**, Android legacy **0.8.7** (8701), Android modern **0.8.7** (8702). Owner confirmed physical-device checks for these versions.
+- Every primary public download was downloaded again and matched signed SHA-256 and size. APK signer matches the previously published APK; the manifest signing key matches clients and the live feed. USB archives contain the exact verified app bytes.
+- Legacy HTTP OTA verified on `opds.ybx.app` for PocketBook and Android legacy; modern target rejected over the legacy HTTP route. Prior legacy HTTP commits are included in the server release.
+- Backend archive gate: **6811 passed, 4 intentional skips, 4 expected failures; 0 PostgreSQL coverage skips**. Frontend tests passed, all 12 committed bundles were byte-identical to the clean build.
+- GitHub Actions for the client push could not start because the account Actions budget prevents further use; local gates and actual artifact verification passed.
+
+## XTApp 1.7.0 — published
+
+Official source `source/ybx-studio`; package `package/YBX-1.7.0.xtapp`, **245112 bytes**.
 SHA-256: `2bfe0a24fa2e0ee51290812daa0673d648fa8a250683171b78ff70ffdeada2b3`.
-Store app: `u_c410dcba5c524789a6586fa34d935bcf`.
-Compatibility: Classic and Pro, Gancao API 2.26.
 
-The official export is checked against `releases/1.7.0.json`. Never rebuild with the old community packer. The publisher refuses different bytes at an existing version URL and writes `static/xtapp/gancao/latest.json`; the legacy Licorice catalog remains separate. Clients 1.6.19 and newer receive the Gancao catalog through the compatibility endpoint; older clients retain their original catalog.
+The XTApp store approved and listed **1.7.0**, with Classic and Pro support, Gancao API 2.26. Project `784cb883-9704-4bc7-bbf5-812129d5a80b`, app `u_c410dcba5c524789a6586fa34d935bcf`. GitHub release `https://github.com/jhdvp/ybx-xtapp-plugin/releases/tag/v1.7.0` is public. Installer and Gancao OTA serve the exact validated export. Historical Licorice 1.6.17 remains separate; unrelated local modifications to that immutable old package/catalog were not shipped.
 
-OTA validates app, firmware channel, minimum API, version, same-origin versioned URL, bounded size, XTAP magic and the SHA-256 of the saved file before offering installation.
+Device seconds remain comparison diagnostics only; credited reading minutes remain server-owned. Physical XTApp OTA installation, position delivery/restoration and counter sleep/restart semantics remain unverified and were disclosed to store reviewers.
 
-Deploy site schema 29 and the matching server before submitting the client. Run the full backend PostgreSQL gate, frontend tests and reproducible asset build, then use `scripts/upgrade_schema.sh 28 29` from a clean committed checkout. Preserve unrelated modified 1.6.17 files.
-
-Seconds are shadow diagnostics only; credited minutes remain server-owned. Physical-device checks remain outstanding as documented in READING-TIME.md.
-
-## Coordination status — 2026-11-16
-
-Release owner: Codex chat «Проверьте KOReader sync API». Client commit `20a8f62` is on main and its GitHub CI passed. The user explicitly requested rollout of 1.7.0. The cloud snapshot `YBX_20261116-023608.zip` was compared with this release: every Lua file matched; only manifest version was 1.7.1. The cloud manifest was aligned to 1.7.0 and the merchant now shows build 1.7.0. Listing text and release notes are saved as a draft; no submission yet.
-
-The site schema/diagnostics/Installer changes are staged, excluding the other work's legacy 1.6.17 package and generic catalog. Full backend verification is running with PostgreSQL and fail-fast; one obsolete migration-count assertion was updated to 29. Production is still schema 28 and has not been deployed by this release task. Avoid parallel rollout while this gate and the schema wrapper are active. Desktop messaging to the CLI-owned «ybx» chat was unavailable (active-writer lock), so this shared handoff records the ownership and current state.
-
-## Combined rollout resumed — 2026-11-16
-
-The owner asked to verify the pushed Installer and publish all ready builds together, and confirmed physical-device checks for PocketBook a13 0.5.7 / legacy4 0.5.6 and Android 0.8.7. Installer is on server `main` at `046df658`; 718 frontend tests passed. Client source review and host gate passed, including the legacy4 packaging guard, and `ybx-apps/main` is pushed at `7f1a0bd`.
-
-A single sequential schema rollout 28→29 for `046df658` is active from the clean worktree `~/.local/state/xteink-agent-workspaces/releases/ybx-combined-20261116`, log `/tmp/ybx-combined-rollout-20261116.log`. The four signed client versions are staged privately on the host; the dry run verified every signature, hash, size, archive and absence of existing-version collisions. Public manifests will be installed only after the server rollout succeeds, followed by XTApp store submission and publishing the GitHub draft. The old incorrectly labeled Android-modern staging pair remains untouched and is excluded. This chat owns the combined rollout.
+Proof and full public-download receipt: `publication/2026-11-16/xtapp-1.7.0-published.jpg` and `publication/2026-11-16/combined-release-receipt.json`. The rollout is complete; do not restart a preflight or publish the old incorrectly labeled Android-modern staging pair.

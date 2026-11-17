@@ -6,7 +6,7 @@
     "ru": "YBX",
     "zh": "YBX 书库"
   },
-  "version": "1.7.0",
+  "version": "1.7.1",
   "author": "Community port",
   "description": "Browse your YBX library, download EPUB books and view cloud reading statistics.",
   "entry": "index.lua",

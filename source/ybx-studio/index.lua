@@ -90,7 +90,7 @@ end)()
 -- each use exactly one host.
 local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app',pt='https://pmy.ybx.app'}
 local API_PATH='/api/v1/crosspoint'
-local VERSION = '1.7.0'
+local VERSION = '1.7.1'
 local APP_VERSION = VERSION -- the app follows the CrossPoint plugin version
 local c, message, buttons, busy = nil, '', {}, false
 
@@ -1170,7 +1170,9 @@ local function poll()
 end
 local function catalog_path(sh,pg,q)
   local paths={yandex='/catalog?shelf=all',wb='/wb/catalog?stock=1',litres='/litres/catalog?stock=1'}
-  local path=(paths[sh] or '/catalog/all?kind='..sh)..'&page='..pg..'&limit=3&v='..VERSION
+  -- page_size makes the stride explicit; limit stays the item count. Callers
+  -- that omit the marker keep the server's legacy lookahead behaviour.
+  local path=(paths[sh] or '/catalog/all?kind='..sh)..'&page='..pg..'&page_size=3&limit=3&v='..VERSION
   if q~='' then path=path..'&q='..encode(q) end
   return path
 end
@@ -1200,7 +1202,7 @@ local function revalidate_page(sh,pg)
     local before=items_signature(cache.pages[key])
     cache_put(key,list)
     if view=='catalog' and query=='' and shelf==sh and page==pg
-        and (ui.catalog_partial or (message=='' and items_signature(list)~=before)) then show_page(list) end
+        and message=='' and (ui.catalog_partial or items_signature(list)~=before) then show_page(list) end
   end)
 end
 catalog=function(force)
@@ -2475,7 +2477,8 @@ function on_draw(_,g)
     action(g,624,T('pair_new_code'),pair,'refresh');action(g,700,T('open_downloads'),downloads,'book',true)
   elseif view=='catalog' or view=='downloads' then
     local local_view=view=='downloads';local list=local_view and (c.state.downloads or {}) or items
-    header_ui(g,ui.tab=='Search' and not local_view and T('nav_search') or 'YBX',nil,true,not local_view and ui.tab~='Search' and function() catalog(true) end or nil)
+    local catalog_refresh=not local_view and (ui.tab~='Search' or ui.catalog_partial) and function() catalog(true) end or nil
+    header_ui(g,ui.tab=='Search' and not local_view and T('nav_search') or 'YBX',nil,true,catalog_refresh)
     if ui.tab=='Search' and not local_view then
       hit(g,24,88,432,56,search,T('search_query'));rounded(g,24,88,432,56);icon(g,'search',40,104);text(g,80,104,fit(query,350))
     else tabs(g) end

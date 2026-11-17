@@ -31,7 +31,7 @@ def source_version(source: Path = DEFAULT_SOURCE) -> str:
     index = (source / "index.lua").read_text(encoding="utf-8")
     match = re.search(r"^local VERSION = '([0-9]+\.[0-9]+\.[0-9]+)'", index, re.MULTILINE)
     if not match:
-        raise SystemExit("VERSION not found in source/ybx/index.lua")
+        raise SystemExit("VERSION not found in source/ybx-studio/index.lua")
     version = manifest["version"]
     if version != match.group(1) or not SEMVER.match(version):
         raise SystemExit(f"manifest version {version} != index VERSION {match.group(1)}")

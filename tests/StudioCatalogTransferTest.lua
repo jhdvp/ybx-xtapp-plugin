@@ -77,3 +77,61 @@ assert(download.cancelled and h.ctx.state.pending==nil,'leave must cancel and cl
 late=download.fn;late(h.ctx,{status=200,saved=true,headers={},body=''})
 assert(#h.ctx.state.downloads==0,'a completion after leave must be ignored')
 print('PASS: user cancel and leave stop a native save, clear pending state and ignore late callbacks')
+-- Explicit pagination: page_size is the stride, limit stays the item count.
+-- Every XTApp catalogue request must carry both; other endpoints keep the
+-- server's legacy lookahead because they omit the marker.
+local function assert_paged(url,kind)
+  assert(type(url)=='string' and url:find('page_size=3',1,true) and url:find('limit=3',1,true),
+    kind..' URL must carry explicit page_size=3 and limit=3: '..tostring(url))
+end
+local p=fixture();p:tick()
+local catalogue=assert(p.pending[1],'catalogue must issue a request')
+assert_paged(catalogue.opts.url,'catalogue')
+assert(catalogue.opts.url:find('/catalog/all?kind=reading',1,true))
+p:reply({items={book}})
+-- Drive search through real UI callbacks: Search tab, search field, a letter, OK.
+p:tap(240,760);p:tap(240,110);p:tap(30,540);p:tap(410,750)
+local search_request=assert(p.pending[1],'search must issue a request')
+assert_paged(search_request.opts.url,'search')
+assert(search_request.opts.url:find('q=q',1,true),'search must keep its query')
+-- Provider shelf through real UI callbacks: filter, provider, yandex, apply.
+local provider=fixture();provider:tick();provider:reply({items={book}})
+provider:tap(400,168);provider:tap(240,568);provider:tap(240,210);provider:tap(240,728)
+local provider_request=assert(provider.pending[1],'provider shelf must issue a request')
+assert_paged(provider_request.opts.url,'provider')
+assert(provider_request.opts.url:find('/catalog?shelf=all',1,true))
+print('PASS: catalogue, search and provider URLs carry page_size=3 and limit=3')
+-- A partial Search page shows the same inline warning and must still have a
+-- working header Refresh, preserving the query, shelf and page on retry.
+p:reply({items={book},warnings={yandex_books='slow'}})
+assert(p:contains('sources'),'partial search must show the inline warning')
+p:tap(370,30)
+local retry=assert(p.pending[1],'partial search needs a working header Refresh')
+assert_paged(retry.opts.url,'search retry')
+assert(retry.opts.url:find('q=q',1,true) and retry.opts.url:find('page=1',1,true),
+  'search retry must preserve query, shelf and page')
+p:reply({items={book},warnings={}})
+assert(not p:contains('sources'),'complete retry clears the partial warning')
+print('PASS: partial Search exposes a real header Refresh and retries with the query intact')
+-- A background recovery must not dismiss an unrelated modal error just because
+-- the non-modal partial warning happens to be set.
+local m=fixture()
+m.files['ybx-cache.json']=m.ctx.json:encode({schema=2,owner=m.ctx.state.event_owner,pages={['reading|1']={book}},order={'reading|1'}})
+m.env.on_leave();m.env.on_load(m.ctx);m:tick()
+assert(#m.pending==1,'cached page must revalidate in background')
+m:reply({items={book},warnings={'regional outage'}})
+assert(m:contains('sources'),'partial background refresh must show the inline warning')
+m:tap(370,30)
+local failing=assert(m.pending[1]);m:reply({}, {status=500,body=''})
+assert(m:contains('Server error'),'unrelated modal error must be visible')
+m:tick(3000)
+local background=assert(m.pending[1],'idle prefetch must revalidate the cached shelf')
+assert_paged(background.opts.url,'background catalogue')
+m:reply({items={book}})
+assert(m:contains('Server error'),'background recovery must not clobber a modal error')
+m:tap(240,728) -- dismiss the modal
+assert(m:contains('sources'),'partial warning must survive until a real recovery')
+m:tap(370,30)
+m:reply({items={book},warnings={}})
+assert(not m:contains('sources') and m:contains('A book'),'ordinary recovery clears the warning and keeps the page')
+print('PASS: background recovery preserves modal errors and clears only the non-modal warning')

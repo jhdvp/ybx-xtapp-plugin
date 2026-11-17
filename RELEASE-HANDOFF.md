@@ -21,3 +21,18 @@ Device seconds remain comparison diagnostics only; credited reading minutes rema
 Proof and full public-download receipt: `publication/2026-11-16/xtapp-1.7.0-published.jpg` and `publication/2026-11-16/combined-release-receipt.json`. The rollout is complete; do not restart a preflight or publish the old incorrectly labeled Android-modern staging pair.
 
 Naming: Gancao (甘草) and Licorice name the same official firmware family, not distinct regional versions. CN/EN are regional variants. Installer copy must describe the required API and historical app version without presenting those names as incompatible systems.
+
+## XTApp 1.7.1 — staged, awaiting official export
+
+Source staged in `source/ybx-studio` at manifest/index version **1.7.1** (host
+API 2.26, no new API) on branch `codex/xtapp-transfer-20261117`. This is a
+source-only local staging commit: **no Studio export, package, receipt or store
+publication exists for 1.7.1 yet**. Root will export through Studio, validate
+the new receipt and package, run the release gate and review independently
+before main integration. The 1.7.0 public release above remains historical and
+unchanged.
+
+Release-pipeline tests derive the current version/package from the Studio
+manifest. The current-export cases are pending until root supplies
+`package/YBX-1.7.1.xtapp` and `releases/1.7.1.json`; no tests are skipped to
+hide the absent export.

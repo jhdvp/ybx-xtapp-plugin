@@ -14,15 +14,29 @@ spec = importlib.util.spec_from_file_location('publish', ROOT / 'scripts/publish
 publish = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publish)
 SOURCE = ROOT / 'source/ybx-studio'
-PACKAGE = ROOT / 'package/YBX-1.7.0.xtapp'
+# Current release identity comes from the canonical Studio manifest, never a
+# hard-coded version. Root supplies the matching receipt and Studio export
+# after export; until then the current-export cases are pending, not skipped.
+CURRENT_VERSION = json.loads((SOURCE / 'manifest.json').read_text(encoding='utf-8'))['version']
+PACKAGE = ROOT / 'package' / f'YBX-{CURRENT_VERSION}.xtapp'
+HISTORICAL_PACKAGE = ROOT / 'package/YBX-1.6.17.xtapp'
+
 
 class ReleasePipelineTests(unittest.TestCase):
     def test_current_official_export_passes(self):
         self.assertEqual(validate(), [])
-        self.assertEqual(publish.source_version(), '1.7.0')
+        self.assertEqual(publish.source_version(), CURRENT_VERSION)
         errors = []
-        self.assertEqual(find_package(errors, '1.7.0'), PACKAGE)
+        self.assertEqual(find_package(errors, CURRENT_VERSION), PACKAGE)
         self.assertFalse(errors)
+
+    def test_immutable_historical_exports_still_match_receipts(self):
+        for version in ('1.6.19', '1.7.0'):
+            receipt = json.loads((ROOT / 'releases' / f'{version}.json').read_text(encoding='utf-8'))
+            package = ROOT / 'package' / f'YBX-{version}.xtapp'
+            self.assertEqual(receipt['version'], version)
+            self.assertEqual(receipt['package_sha256'],
+                             hashlib.sha256(package.read_bytes()).hexdigest())
 
     def test_same_size_source_edit_requires_new_export(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -41,15 +55,16 @@ class ReleasePipelineTests(unittest.TestCase):
     def test_wrong_version_rejected_before_site_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = Path(tmp) / 'site'
+            # The immutable 1.6.17 export must never be relabelled as current.
             with self.assertRaises(Exception):
-                publish.publish(ROOT / 'package/YBX-1.6.17.xtapp', '1.7.0', '', False, False, site)
+                publish.publish(HISTORICAL_PACKAGE, CURRENT_VERSION, '', False, False, site)
             self.assertFalse(site.exists())
 
     def test_dry_run_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = Path(tmp) / 'site'
             before = hashlib.sha256(PACKAGE.read_bytes()).hexdigest()
-            publish.publish(PACKAGE, '1.7.0', 'check', False, True, site)
+            publish.publish(PACKAGE, CURRENT_VERSION, 'check', False, True, site)
             self.assertFalse(site.exists())
             self.assertEqual(hashlib.sha256(PACKAGE.read_bytes()).hexdigest(), before)
 
@@ -58,21 +73,22 @@ class ReleasePipelineTests(unittest.TestCase):
             site = Path(tmp) / 'site'
             static = site / publish.STATIC_SUBDIR
             static.mkdir(parents=True)
-            (static / 'YBX-1.7.0.xtapp').write_bytes(b'previous export')
+            (static / f'YBX-{CURRENT_VERSION}.xtapp').write_bytes(b'previous export')
             with self.assertRaises(SystemExit):
-                publish.publish(PACKAGE, '1.7.0', 'check', False, False, site)
+                publish.publish(PACKAGE, CURRENT_VERSION, 'check', False, False, site)
             self.assertFalse((static / 'gancao').exists())
 
     def test_isolated_site_receives_exact_export(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = Path(tmp) / 'site'
-            publish.publish(PACKAGE, '1.7.0', 'check', False, False, site)
+            publish.publish(PACKAGE, CURRENT_VERSION, 'check', False, False, site)
             static = site / publish.STATIC_SUBDIR
             latest = json.loads((static / 'gancao' / 'latest.json').read_text())
-            target = static / 'YBX-1.7.0.xtapp'
+            target = static / f'YBX-{CURRENT_VERSION}.xtapp'
             self.assertEqual(target.read_bytes(), PACKAGE.read_bytes())
-            self.assertEqual(latest['version'], '1.7.0')
+            self.assertEqual(latest['version'], CURRENT_VERSION)
             self.assertEqual(latest['sha256'], hashlib.sha256(target.read_bytes()).hexdigest())
+
 
 if __name__ == '__main__':
     unittest.main()

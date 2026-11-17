@@ -106,6 +106,7 @@ local STR={
  back={'Back','Назад','Артқа'}, cancel={'Cancel','Отмена','Бас тарту'},
  settings={'Settings','Настройки','Баптаулар'}, close_app={'Close YBX','Закрыть YBX','YBX-ті жабу'},
  loading={'Loading','Загрузка','Жүктелуде'}, selected={'Selected','Выбрано','Таңдалған'},
+ catalog_partial={'Some sources did not respond. Refresh to retry.','Часть источников не ответила. Обновите список.','Кейбір дереккөздер жауап бермеді. Тізімді жаңартыңыз.'},
  try_again={'Try again','Повторить','Қайталау'},
  msg_ok={'Done','Готово','Дайын'}, msg_check={'Please note','Обратите внимание','Назар аударыңыз'},
  nav_library={'Library','Библиотека','Кітапхана'}, nav_search={'Search','Поиск','Іздеу'},
@@ -638,6 +639,7 @@ local function header(resp,name)
 end
 local retry_at, request_id, active = 0, 0, nil
 local request_started = 0
+F.request_deadline = 0
 local ui={focus=false,tab='Library',data={},loaded=false,local_page=1,download_error=nil,notice='',auto_library=false,credentials=nil,reveal=false,month=nil,day=nil,award_page=1}
 local pair_qr
 local drawn_view, return_view = nil, 'catalog'
@@ -716,6 +718,7 @@ end
 -- background request then refreshes what is on screen, and idle time is used
 -- to prefetch the next pages. Only a cache miss shows the blocking loader.
 local CACHE_FILE='ybx-cache.json'
+F.CACHE_SCHEMA=2 -- Earlier pages may have been persisted despite source warnings.
 local cache={pages={},order={}}
 local fresh={}          -- keys refreshed during this session
 local bg={id=0}         -- the single background request
@@ -741,7 +744,7 @@ local function items_signature(list)
 end
 local function cache_save()
   pcall(function()
-    c.storage:write(CACHE_FILE,c.json:encode({owner=c.state.event_owner,pages=cache.pages,order=cache.order,
+    c.storage:write(CACHE_FILE,c.json:encode({schema=F.CACHE_SCHEMA,owner=c.state.event_owner,pages=cache.pages,order=cache.order,
       profile=cache.profile,awards=cache.awards,month=cache.month,days=cache.days}))
   end)
 end
@@ -755,7 +758,7 @@ local function cache_load()
     local raw=c.storage:read(CACHE_FILE)
     return type(raw)=='string' and #raw>2 and #raw<=65536 and c.json:decode(raw) or nil
   end)
-  if not ok or type(value)~='table' or value.owner~=c.state.event_owner then return end
+  if not ok or type(value)~='table' or value.owner~=c.state.event_owner or value.schema~=F.CACHE_SCHEMA then return end
   for _,key in ipairs(type(value.order)=='table' and value.order or {}) do
     local list=type(key)=='string' and #key<=48 and type(value.pages)=='table' and clean_items(value.pages[key])
     if list and not cache.pages[key] and #cache.order<10 then cache.pages[key]=list;cache.order[#cache.order+1]=key end
@@ -804,6 +807,9 @@ local function request(path, body, auth, done, headers, on_data, save, timeout, 
   local received=false
   redraw('')
   local function send(url,hops)
+    -- The host deadline covers Wi-Fi, headers and the complete body. Atomic
+    -- saves need not expose growing file sizes, so a shorter idle timer is unsafe.
+    F.request_deadline=now()+(timeout or 30000)+5000
     local ok, handle, err=pcall(function()
       return c.net:request({url=url,method=method or (body and 'POST' or 'GET'),
         body=type(body)=='string' and body or body and c.json:encode(body) or nil,headers=headers,timeout_ms=timeout or 30000,save=save},function(net_ctx,resp)
@@ -1169,10 +1175,13 @@ local function catalog_path(sh,pg,q)
   return path
 end
 local function page_key(sh,pg) return sh..'|'..pg end
-local function show_page(list)
+function F.catalog_incomplete(data)
+  return data.incomplete==true or (type(data.warnings)=='table' and next(data.warnings)~=nil)
+end
+local function show_page(list,incomplete)
   items=list;ui.loaded=true
-  if query=='' then ui.library_cache={items=items,page=page,shelf=shelf} end
-  view='catalog';selected_index=1;redraw('')
+  if query=='' then ui.library_cache=not incomplete and {items=items,page=page,shelf=shelf} or nil end
+  view='catalog';selected_index=1;redraw(incomplete and T('catalog_partial') or '')
   F.update_auto()
 end
 -- Refresh one shelf page in the background; redraw only if it changed and is
@@ -1182,9 +1191,15 @@ local function revalidate_page(sh,pg)
   return quiet(catalog_path(sh,pg,''),function(data)
     local list=clean_items(data.items)
     if not list then return end
+    if F.catalog_incomplete(data) then
+      -- Keep the last complete page; an unavailable source cannot replace it.
+      if view=='catalog' and query=='' and shelf==sh and page==pg then redraw(T('catalog_partial')) end
+      return
+    end
     local before=items_signature(cache.pages[key])
     cache_put(key,list)
-    if view=='catalog' and query=='' and shelf==sh and page==pg and message=='' and items_signature(list)~=before then show_page(list) end
+    if view=='catalog' and query=='' and shelf==sh and page==pg
+        and (message==T('catalog_partial') or (message=='' and items_signature(list)~=before)) then show_page(list) end
   end)
 end
 catalog=function(force)
@@ -1201,8 +1216,9 @@ catalog=function(force)
     local data=decode(resp)
     local list=clean_items(data.items)
     if not list then say('err_catalog'); return end
-    if key then cache_put(key,list) end
-    show_page(list)
+    local incomplete=F.catalog_incomplete(data)
+    if key and not incomplete then cache_put(key,list) end
+    show_page(list,incomplete)
   end)
 end
 local function search()
@@ -2833,7 +2849,7 @@ function on_tick()
   if ui.auto_library and not busy then ui.auto_library=false;catalog();return end
   if auto_reader_sync and not busy then auto_reader_sync=false;sync_reader_events(true) end
   if bg.handle and bg.started and now()-bg.started>=25000 then quiet_cancel() end
-  if busy and now()-request_started>=35000 then
+  if busy and now()>=F.request_deadline then
     request_id=request_id+1
     if active then pcall(function() active:cancel() end) end
     active=nil;busy=false

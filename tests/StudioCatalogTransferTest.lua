@@ -113,6 +113,21 @@ assert(retry.opts.url:find('q=q',1,true) and retry.opts.url:find('page=1',1,true
 p:reply({items={book},warnings={}})
 assert(not p:contains('sources'),'complete retry clears the partial warning')
 print('PASS: partial Search exposes a real header Refresh and retries with the query intact')
+-- ui.catalog_partial belongs to the last shown page: restoring a complete
+-- cached Reading page from the Library tab must clear a partial Search page's
+-- stale warning while keeping the original complete book on screen.
+local lib=fixture();lib:tick();lib:reply({items={book}})
+assert(lib:contains('A book'),'complete Reading page must be on screen before navigating away')
+lib:tap(240,760) -- Search tab
+lib:tap(240,110) -- search field
+lib:tap(30,540)  -- type a letter
+lib:tap(410,750) -- OK -> search request
+lib:reply({items={book},warnings={yandex_books='slow'}})
+assert(lib:contains('sources'),'partial search must show the inline warning')
+lib:tap(80,760) -- Library tab: fast-path restores the complete cached Reading page
+assert(lib:contains('A book'),'restored Library must show the original complete book')
+assert(not lib:contains('sources'),'restoring a complete cached page must clear the Search warning')
+print('PASS: Library restores the complete cached Reading page without the stale Search warning')
 -- A background recovery must not dismiss an unrelated modal error just because
 -- the non-modal partial warning happens to be set.
 local m=fixture()

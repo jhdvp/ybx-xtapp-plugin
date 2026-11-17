@@ -1839,7 +1839,10 @@ local function library()
   ui.tab='Library';query=''
   if token=='' then welcome();return end
   local cache=ui.library_cache
-  if cache then items=cache.items;page=cache.page;shelf=cache.shelf;go('catalog') else shelf='reading';page=1;catalog() end
+  -- The notice belongs to the last shown page. Restoring a complete cached
+  -- page here replaces a page that may have been partial (e.g. Search), so the
+  -- old warning must not follow the restored page.
+  if cache then ui.catalog_partial=nil;items=cache.items;page=cache.page;shelf=cache.shelf;go('catalog') else shelf='reading';page=1;catalog() end
 end
 local function back()
   if view=='stores' then

@@ -1181,7 +1181,8 @@ end
 local function show_page(list,incomplete)
   items=list;ui.loaded=true
   if query=='' then ui.library_cache=not incomplete and {items=items,page=page,shelf=shelf} or nil end
-  view='catalog';selected_index=1;redraw(incomplete and T('catalog_partial') or '')
+  ui.catalog_partial=incomplete and true or nil
+  view='catalog';selected_index=1;redraw('')
   F.update_auto()
 end
 -- Refresh one shelf page in the background; redraw only if it changed and is
@@ -1193,13 +1194,13 @@ local function revalidate_page(sh,pg)
     if not list then return end
     if F.catalog_incomplete(data) then
       -- Keep the last complete page; an unavailable source cannot replace it.
-      if view=='catalog' and query=='' and shelf==sh and page==pg then redraw(T('catalog_partial')) end
+      if view=='catalog' and query=='' and shelf==sh and page==pg then ui.catalog_partial=true;redraw('') end
       return
     end
     local before=items_signature(cache.pages[key])
     cache_put(key,list)
     if view=='catalog' and query=='' and shelf==sh and page==pg
-        and (message==T('catalog_partial') or (message=='' and items_signature(list)~=before)) then show_page(list) end
+        and (ui.catalog_partial or (message=='' and items_signature(list)~=before)) then show_page(list) end
   end)
 end
 catalog=function(force)
@@ -2390,7 +2391,7 @@ function on_load(ctx)
   -- Progress reporting does not need the CrossPoint firmware: ctx.reader supplies the
   -- numbers, so queue a report on open whenever reading data exists.
   if not auto_reader_sync and token~='' and Reading.service(c) then auto_reader_sync=true end
-  view=token=='' and 'welcome' or 'catalog';ui.focus=false;ui.loaded=false;ui.auto_library=token~='';ui.library_cache=nil;items={};ui.data={};ui.credentials=nil
+  view=token=='' and 'welcome' or 'catalog';ui.focus=false;ui.loaded=false;ui.auto_library=token~='';ui.library_cache=nil;ui.catalog_partial=nil;items={};ui.data={};ui.credentials=nil
   bg={id=0};prefetch_tries={};ui.last_input=now() or 0
   if token~='' then cache_load() else cache={pages={},order={}};fresh={} end
   -- Open straight onto the cached Reading shelf; on_tick then refreshes it quietly.
@@ -2483,6 +2484,7 @@ function on_draw(_,g)
       hit(g,300,146,44,44,function() F.open_stores('catalog') end,T('stores_title'));rounded(g,300,146,44,44,8);icon(g,'info',310,156)
       hit(g,352,144,104,48,function() local store=PROVIDERS[shelf] and shelf;ui.filter_shelf=store and 'all' or shelf;ui.provider=store or '';go('filters') end,T('filter'));icon(g,'settings',352,158);text(g,388,158,T('filter'))
     else text(g,24,162,local_view and T('offline_sub') or T('search_results')) end
+    if view=='catalog' and ui.catalog_partial then icon(g,'warning',24,190,20);text(g,56,190,fit(T('catalog_partial'),400)) end
     local start=local_view and ((ui.local_page-1)*3+1) or 1
     if #list==0 then empty(g,local_view and T('empty_offline') or ui.tab=='Search' and T('no_match') or T('no_books'),local_view and T('empty_offline_cta') or ui.tab=='Search' and T('no_match_body') or T('try_other'),'book') end
     for i=start,math.min(start+2,#list) do

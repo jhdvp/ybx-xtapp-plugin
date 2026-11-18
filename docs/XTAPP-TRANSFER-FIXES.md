@@ -1,10 +1,12 @@
 # XTApp 1.7.1 — catalog transfer fixes
 
-Final source state staged in `source/ybx-studio` for the official Studio export.
-Manifest and code `VERSION` are **1.7.1**; the host API stays **2.26** (no new
-API). The Studio export, release receipt and package are produced and validated
-by root. Until they exist this is a source-only local staging change — nothing
-for 1.7.1 is published or marked shipped here.
+The reviewed source in `source/ybx-studio` was exported with official XTApp
+Studio on 2026-11-17 as `package/YBX-1.7.1.xtapp` (246931 bytes).
+Manifest and code `VERSION` are **1.7.1**; the host API remains **2.26**.
+`releases/1.7.1.json` records exact source/asset and package hashes. Structural
+validation and all eight release-pipeline tests passed. Publication to the
+store, GitHub and the live Installer is tracked separately; an export alone
+is not evidence of deployment.
 
 ## Native-save watchdog
 

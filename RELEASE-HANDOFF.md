@@ -22,17 +22,17 @@ Proof and full public-download receipt: `publication/2026-11-16/xtapp-1.7.0-publ
 
 Naming: Gancao (甘草) and Licorice name the same official firmware family, not distinct regional versions. CN/EN are regional variants. Installer copy must describe the required API and historical app version without presenting those names as incompatible systems.
 
-## XTApp 1.7.1 — staged, awaiting official export
+## XTApp 1.7.1 — official export validated, publication pending
 
-Source staged in `source/ybx-studio` at manifest/index version **1.7.1** (host
-API 2.26, no new API) on branch `codex/xtapp-transfer-20261117`. This is a
-source-only local staging commit: **no Studio export, package, receipt or store
-publication exists for 1.7.1 yet**. Root will export through Studio, validate
-the new receipt and package, run the release gate and review independently
-before main integration. The 1.7.0 public release above remains historical and
-unchanged.
-
-Release-pipeline tests derive the current version/package from the Studio
-manifest. The current-export cases are pending until root supplies
-`package/YBX-1.7.1.xtapp` and `releases/1.7.1.json`; no tests are skipped to
-hide the absent export.
+Source `source/ybx-studio` and manifest/index are **1.7.1**, host API 2.26.
+Root exported the source through official Studio after permission to sync the
+existing YBX project. `package/YBX-1.7.1.xtapp` is **246931 bytes**, SHA-256
+`b0112caae138772651c6e54d61a9ec8355ffa1581d72ebe860902037d021c3e7`.
+`releases/1.7.1.json` records exact runtime and asset hashes. Official-package
+validation, Studio behavioral tests, legacy tests, 200×400-step monkey tests
+and all eight release-pipeline tests passed. Source and package are integrated
+in local main; the Site Gancao feed update is staged locally with the new file.
+No store submission, public GitHub release or server deployment for 1.7.1 is
+claimed yet. Complete the combined Site/Installer release gates and publish
+from reviewed main. Historical 1.7.0 and legacy 1.6.17 files remain separate.
+Physical OTA installation and position restoration are still not verified.

@@ -143,6 +143,9 @@ local STR={
  search_results={'Search results','Результаты поиска','Іздеу нәтижелері'},
  offline_sub={'Available offline','Доступны без сети','Желісіз қолжетімді'},
  filter={'Filter','Фильтр','Сүзгі'}, search_query={'Title or author','Название или автор','Атауы не авторы'},
+ sort_label={'Sorting','Сортировка','Сұрыптау'},
+ sort_added={'Date added','По дате добавления','Қосылған күні'},
+ sort_title={'By title','По названию','Атауы бойынша'},
  shelf_reading={'Reading','Читаю','Оқып жүрмін'}, shelf_all={'All books','Все книги','Барлық кітап'},
  shelf_device={'On device','На устройстве','Құрылғыда'}, shelf_want={'Want to read','Хочу прочитать','Оқығым келеді'},
  shelf_finished={'Finished','Прочитано','Оқылған'}, shelf_uploaded={'My uploads','Мои загрузки','Менің файлдарым'},
@@ -586,7 +589,7 @@ KB_ROWS.kk=KB_ROWS.ru
 local KB_EXTRA={kk={'ә','і','ң','ғ','ү','ұ','қ','ө','һ'}}
 local KB_NAMES={en={'EN','English'},ru={'РУ','Русский'},kk={'ҚА','Қазақша'}}
 
-local token, pairing, items, page, shelf, query = '', nil, {}, 1, 'reading', ''
+local token, pairing, items, page, shelf, query, sort = '', nil, {}, 1, 'reading', '', 'added'
 local selected, selected_index, view = nil, 1, 'home'
 local download_file, download_bytes, download_prefix = nil, 0, ''
 local download_native = false
@@ -1019,16 +1022,26 @@ local function poll()
     else failure(resp,status) end
   end)
 end
-local function catalog_path(sh,pg,q)
+function F.sort_name(so)
+  if so=='title' then return T('sort_title') end
+  if so=='added' then return T('sort_added') end
+  return nil
+end
+local function catalog_path(sh,pg,q,so)
   local paths={yandex='/catalog?shelf=all',wb='/wb/catalog?stock=1',litres='/litres/catalog?stock=1'}
   local path=(paths[sh] or '/catalog/all?kind='..sh)..'&page='..pg..'&limit=3&v='..VERSION
-  if q~='' then path=path..'&q='..encode(q) end
+  local s=so or sort
+  if q~='' then
+    path=path..'&q='..encode(q)
+  elseif s and s~='' then
+    path=path..'&sort='..s
+  end
   return path
 end
-local function page_key(sh,pg) return sh..'|'..pg end
+local function page_key(sh,pg) return sh..'|'..pg..'|'..sort end
 local function show_page(list)
   items=list;ui.loaded=true
-  if query=='' then ui.library_cache={items=items,page=page,shelf=shelf} end
+  if query=='' then ui.library_cache={items=items,page=page,shelf=shelf,sort=sort} end
   view='catalog';selected_index=1;redraw('')
   F.update_auto()
 end
@@ -1041,7 +1054,7 @@ local function revalidate_page(sh,pg)
     if not list then return end
     local before=items_signature(cache.pages[key])
     cache_put(key,list)
-    if view=='catalog' and query=='' and shelf==sh and page==pg and message=='' and items_signature(list)~=before then show_page(list) end
+    if view=='catalog' and query=='' and shelf==sh and page==pg and page_key(sh,pg)==key and message=='' and items_signature(list)~=before then show_page(list) end
   end)
 end
 catalog=function(force)
@@ -1621,7 +1634,7 @@ local function library()
   ui.tab='Library';query=''
   if token=='' then welcome();return end
   local cache=ui.library_cache
-  if cache then items=cache.items;page=cache.page;shelf=cache.shelf;go('catalog') else shelf='reading';page=1;catalog() end
+  if cache then items=cache.items;page=cache.page;shelf=cache.shelf;sort=cache.sort or sort or 'added';go('catalog') else shelf='reading';page=1;catalog() end
 end
 local function back()
   if view=='stores' then
@@ -1631,7 +1644,7 @@ local function back()
   end
   if view=='kosync' then ui.credentials=nil;ui.reveal=false end
   if view=='clippings' then ui.clip_key=nil;ui.clip_url=nil;ui.reveal=false end
-  local parent={offline='support',settings='catalog',account='settings',disconnect='account',forget='account',sleep='settings',sleep_options='sleep',reader_sleep='settings',kosync='settings',support='settings',storage='support',about='support',activity='catalog',reading_list='activity',book_stats='reading_list',clippings='kosync',calendar='activity',day='calendar',awards='activity',award='awards',search='catalog',filters='catalog',provider='filters',pair='welcome',pair_expired='welcome',expired='welcome',delete='detail',book_actions='detail',download_ready='detail',download_error='detail',error_details='download_error',update='about',update_ready='about'}
+  local parent={offline='support',settings='catalog',account='settings',disconnect='account',forget='account',sleep='settings',sleep_options='sleep',reader_sleep='settings',kosync='settings',support='settings',storage='support',about='support',activity='catalog',reading_list='activity',book_stats='reading_list',clippings='kosync',calendar='activity',day='calendar',awards='activity',award='awards',search='catalog',filters='catalog',sort='filters',provider='filters',pair='welcome',pair_expired='welcome',expired='welcome',delete='detail',book_actions='detail',download_ready='detail',download_error='detail',error_details='download_error',update='about',update_ready='about'}
   if view=='detail' or view=='download_ready' then go(return_view);return end
   if parent[view]=='catalog' then library() elseif parent[view]=='sleep' then enter_sleep() else go(parent[view] or 'catalog') end
 end
@@ -2163,6 +2176,7 @@ function on_load(ctx)
   c:set_tick(1000)
   view=token=='' and 'welcome' or 'catalog';ui.focus=false;ui.loaded=false;ui.auto_library=token~='';ui.library_cache=nil;items={};ui.data={};ui.credentials=nil
   bg={id=0};prefetch_tries={};ui.last_input=now() or 0
+  if c.state and (c.state.sort=='added' or c.state.sort=='title') then sort=c.state.sort else sort='added' end
   if token~='' then cache_load() else cache={pages={},order={}};fresh={} end
   -- Open straight onto the cached Reading shelf; on_tick then refreshes it quietly.
   shelf='reading';page=1;query=''
@@ -2238,7 +2252,7 @@ function on_draw(_,g)
     if not local_view and ui.tab~='Search' then
       F.store_buttons(g,146)
       hit(g,300,146,44,44,function() F.open_stores('catalog') end,T('stores_title'));rounded(g,300,146,44,44,8);icon(g,'info',310,156)
-      hit(g,352,144,104,48,function() local store=PROVIDERS[shelf] and shelf;ui.filter_shelf=store and 'all' or shelf;ui.provider=store or '';go('filters') end,T('filter'));icon(g,'settings',352,158);text(g,388,158,T('filter'))
+      hit(g,352,144,104,48,function() local store=PROVIDERS[shelf] and shelf;ui.filter_shelf=store and 'all' or shelf;ui.provider=store or '';ui.filter_sort=sort or 'added';go('filters') end,T('filter'));icon(g,'settings',352,158);text(g,388,158,T('filter'))
     else text(g,24,162,local_view and T('offline_sub') or T('search_results')) end
     local start=local_view and ((ui.local_page-1)*3+1) or 1
     if #list==0 then empty(g,local_view and T('empty_offline') or ui.tab=='Search' and T('no_match') or T('no_books'),local_view and T('empty_offline_cta') or ui.tab=='Search' and T('no_match_body') or T('try_other'),'book') end
@@ -2258,7 +2272,25 @@ function on_draw(_,g)
       local y=136+(i-1)*66;hit(g,24,y,432,62,function() ui.filter_shelf=t[2];redraw() end,t[1]);text(g,24,y+20,t[1]);if ui.filter_shelf==t[2] then icon(g,'check',428,y+20) end;line(g,24,y+62,456,y+62)
     end
     section(g,500,T('provider'));row(g,540,F.provider_name(ui.provider) or T('all_providers'),function() go('provider') end)
-    action(g,700,T('apply_filters'),function() shelf=ui.provider~='' and ui.provider or ui.filter_shelf or 'all';query='';page=1;ui.tab='Library';catalog() end,'check')
+    row(g,620,T('sort_label'),function() go('sort') end,nil,F.sort_name(ui.filter_sort or sort) or T('sort_added'))
+    action(g,700,T('apply_filters'),function()
+      local s=ui.filter_sort or sort or 'added'
+      local sort_changed=s~=sort
+      sort=s
+      if c.state then c.state.sort=sort; c:save_state() end
+      shelf=ui.provider~='' and ui.provider or ui.filter_shelf or 'all'
+      query=''
+      page=1
+      ui.local_page=1
+      ui.tab='Library'
+      if sort_changed then ui.library_cache=nil end
+      catalog(sort_changed)
+    end,'check')
+  elseif view=='sort' then
+    header_ui(g,T('sort_label'),back)
+    for i,t in ipairs{{T('sort_added'),'added'},{T('sort_title'),'title'}} do
+      row(g,110+(i-1)*76,t[1],function() ui.filter_sort=t[2];go('filters') end,nil,(ui.filter_sort or sort)==t[2] and T('selected') or nil)
+    end
   elseif view=='provider' then
     header_ui(g,T('provider'),back)
     for i,t in ipairs{{T('all_providers'),''},{F.provider_name('yandex'),'yandex'},{F.provider_name('wb'),'wb'},{F.provider_name('litres'),'litres'}} do row(g,110+(i-1)*76,t[1],function() ui.provider=t[2];go('filters') end,nil,ui.provider==t[2] and T('selected') or nil) end

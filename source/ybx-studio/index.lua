@@ -90,7 +90,7 @@ end)()
 -- each use exactly one host.
 local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app',pt='https://pmy.ybx.app'}
 local API_PATH='/api/v1/crosspoint'
-local VERSION = '1.7.1'
+local VERSION = '1.7.2'
 local APP_VERSION = VERSION -- the app follows the CrossPoint plugin version
 local c, message, buttons, busy = nil, '', {}, false
 

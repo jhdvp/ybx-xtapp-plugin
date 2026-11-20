@@ -194,7 +194,8 @@ def validate(source: Path = DEFAULT_SOURCE, package: Path | None = None) -> list
     manifest, sleep_card = validate_source(source, errors)
     if errors:
         return errors
-    package = package or find_package(errors, manifest.get("version"))
+    legacy_package = ROOT / "package" / f"YBX-{manifest.get('version')}-legacy.xtapp"
+    package = package or (legacy_package if legacy_package.is_file() else find_package(errors, manifest.get("version")))
     if package is not None:
         if not Path(package).is_file():
             errors.append(f"package not found: {package}")

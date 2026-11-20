@@ -86,7 +86,7 @@ end)()
 -- each use exactly one host.
 local HOSTS={main='https://my.ybx.app',eu='https://emy.ybx.app',pt='https://pmy.ybx.app'}
 local API_PATH='/api/v1/crosspoint'
-local VERSION = '1.6.20'
+local VERSION = '1.7.2'
 local APP_VERSION = VERSION -- the app follows the CrossPoint plugin version
 local c, message, buttons, busy = nil, '', {}, false
 
@@ -1720,7 +1720,7 @@ function F.update_check(manual)
   if ui.update_check_at and now()-ui.update_check_at<30000 then return end
   ui.update_check_at=now()
   if manual then say('update_checking') end
-  F.update_fetch('/xtapp/latest.json?v='..VERSION,nil,function(resp,status)
+  F.update_fetch('/xtapp/latest.json',nil,function(resp,status)
     ui.update_check_at=nil
     if status~=200 then if manual then say('update_check_failed') end;return end
     local ok,doc=pcall(function() return c.json:decode(type(resp)=='table' and resp.body or '') end)

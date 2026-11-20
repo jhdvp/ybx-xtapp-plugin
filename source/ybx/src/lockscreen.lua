@@ -30,7 +30,7 @@ local function refresh_once(ctx)
     pending=false;cancel_request();data=''
   end
   local started,handle=pcall(function()
-    return ctx.net:request({url=host..'/api/v1/crosspoint/sleep-image?w=480&h=800&v=1.6.20',
+    return ctx.net:request({url=host..'/api/v1/crosspoint/sleep-image?w=480&h=800&v=1.7.2',
       method='GET',headers={Authorization='Bearer '..token},timeout_ms=15000,
       on_data=function(_,chunk)
         if current~=generation or not pending then return end

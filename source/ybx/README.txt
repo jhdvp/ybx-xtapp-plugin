@@ -553,3 +553,5 @@ Portuguese mirror (after 1.6.16):
 
 1.6.20
 Library filters now offer the OPDS shelf default, date added, title, author and reading progress.
+
+1.7.2 — Legacy build for XTApp API 2.18. Available alongside the Studio API 2.26 build in the same GitHub release.

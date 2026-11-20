@@ -33,13 +33,13 @@ assert(not h.files['ybx-cache.json'],'partial foreground must not persist a page
 assert(h:contains('sources'),'partial foreground must be explained on screen')
 h:tap(370,30);assert(#h.pending==1,'partial page can immediately be retried')
 h:reply({items={book},warnings={}})
-local saved=h.ctx.json:decode(h.files['ybx-cache.json']);assert(saved.schema==2 and #saved.pages['reading|1']==1)
+local saved=h.ctx.json:decode(h.files['ybx-cache.json']);assert(saved.schema==2 and #saved.pages['reading|1|opds']==1)
 print('PASS: partial foreground is visible but uncached; complete retry is persisted')
 -- A cached complete page must survive a partial background refresh unchanged.
 h.env.on_leave();h.env.on_load(h.ctx);h:tick()
 assert(#h.pending==1,'cached page must revalidate in background')
 h:reply({items={},warnings={'regional outage'}})
-saved=h.ctx.json:decode(h.files['ybx-cache.json']);assert(#saved.pages['reading|1']==1)
+saved=h.ctx.json:decode(h.files['ybx-cache.json']);assert(#saved.pages['reading|1|opds']==1)
 assert(h:contains('A book'),'background partial must keep the last complete page')
 assert(h:contains('sources'))
 print('PASS: partial background refresh keeps the complete cache and visible page')
@@ -131,7 +131,7 @@ print('PASS: Library restores the complete cached Reading page without the stale
 -- A background recovery must not dismiss an unrelated modal error just because
 -- the non-modal partial warning happens to be set.
 local m=fixture()
-m.files['ybx-cache.json']=m.ctx.json:encode({schema=2,owner=m.ctx.state.event_owner,pages={['reading|1']={book}},order={'reading|1'}})
+m.files['ybx-cache.json']=m.ctx.json:encode({schema=2,owner=m.ctx.state.event_owner,pages={['reading|1|opds']={book}},order={'reading|1|opds'}})
 m.env.on_leave();m.env.on_load(m.ctx);m:tick()
 assert(#m.pending==1,'cached page must revalidate in background')
 m:reply({items={book},warnings={'regional outage'}})
@@ -150,3 +150,31 @@ m:tap(370,30)
 m:reply({items={book},warnings={}})
 assert(not m:contains('sources') and m:contains('A book'),'ordinary recovery clears the warning and keeps the page')
 print('PASS: background recovery preserves modal errors and clears only the non-modal warning')
+
+local sorted = fixture()
+sorted:tick()
+assert(sorted.pending[1].opts.url:find('sort=opds',1,true))
+sorted:reply({items={book}})
+sorted:tap(400,165)
+sorted:tap(110,648)
+sorted:tap(110,290)
+sorted:tap(110,728)
+local url=assert(sorted.pending[1]).opts.url
+assert(url:find('sort=title',1,true) and url:find('page=1',1,true), url)
+sorted:reply({items={book}})
+sorted.env.on_leave()
+sorted.env.on_load(sorted.ctx)
+sorted:tick()
+assert(sorted.ctx.state.sort=='title')
+assert(sorted.pending[1].opts.url:find('sort=title',1,true))
+print('PASS: filter selects title order from page one and retains it on restart')
+
+for index,mode in ipairs({'opds','added','title','author','progress'}) do
+  local screen=fixture()
+  screen:tick();screen:reply({items={book}})
+  screen:tap(400,165);screen:tap(110,648)
+  screen:tap(110,138+(index-1)*76);screen:tap(110,728)
+  assert(screen.ctx.state.sort==mode)
+  if mode~='opds' then assert(screen.pending[1].opts.url:find('sort='..mode,1,true)) end
+end
+print('PASS: each OPDS order is selectable through the library filters')

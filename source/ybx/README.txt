@@ -550,3 +550,6 @@ Portuguese mirror (after 1.6.16):
   ones, because the server hands back the base of whichever host served the
   request and all three share one clipping store. Any other host, scheme or path
   is refused.
+
+1.6.20
+Library filters now offer the OPDS shelf default, date added, title, author and reading progress.
